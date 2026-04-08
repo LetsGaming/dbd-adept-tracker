@@ -168,7 +168,9 @@
                 <button class="export-btn" @click="importJSON">
                   📂 Import
                 </button>
-                <button class="export-btn" @click="exportCSV">📊 CSV</button>
+                <button class="export-btn" @click="exportStatCard">
+                  📊 Stat Card
+                </button>
                 <button class="export-btn" @click="shareLink">🔗 Teilen</button>
               </div>
             </div>
@@ -347,12 +349,8 @@
             >
               📂 Import
             </button>
-            <button
-              class="export-btn"
-              style="padding: 14px 8px; font-size: 14px"
-              @click="exportCSV"
-            >
-              📊 CSV
+            <button class="export-btn" @click="exportStatCard">
+              📊 Stat Card
             </button>
             <button
               class="export-btn"
@@ -616,39 +614,190 @@ export default defineComponent({
       inp.click();
     },
 
-    exportCSV(): void {
-      const allChars = [
-        ...this.store.survivors.map((c) => ({ ...c, side: "Survivor" })),
-        ...this.store.killers.map((c) => ({ ...c, side: "Killer" })),
-      ];
-      const header = [
-        "Name",
-        "Seite",
-        "Chapter",
-        "Versuche",
-        "Erledigt",
-        "Datum",
-        "Priorität",
-      ];
-      const rows = allChars.map((c) => {
-        const p = this.store.getProgress(c.id);
-        return [
-          c.name,
-          c.side,
-          c.role,
-          p.tries,
-          p.done ? "Ja" : "Nein",
-          p.doneAt ? new Date(p.doneAt).toLocaleDateString("de-DE") : "",
-          p.priority ? "Ja" : "Nein",
-        ];
-      });
-      const csv = [header, ...rows].map((r) => r.join(";")).join("\n");
-      this._download(
-        "\uFEFF" + csv,
-        "text/csv;charset=utf-8",
-        `dbd-adept-${new Date().toISOString().slice(0, 10)}.csv`,
+    exportStatCard(): void {
+      const canvas = document.createElement("canvas");
+      const W = 800,
+        H = 480;
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d")!;
+
+      const s = this.store;
+      const survivorPct = Math.round(
+        (s.survivorsDone / s.survivors.length) * 100,
       );
-      showToast("📊 CSV");
+      const killerPct = Math.round((s.killersDone / s.killers.length) * 100);
+      const totalPct = Number(s.totalPercent);
+
+      // ── background
+      ctx.fillStyle = "#0d0d0f";
+      ctx.fillRect(0, 0, W, H);
+
+      // ── top accent bar
+      const grad = ctx.createLinearGradient(0, 0, W, 0);
+      grad.addColorStop(0, "#7c3aed");
+      grad.addColorStop(1, "#c026d3");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, 4);
+
+      // ── title
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 13px monospace";
+      ctx.letterSpacing = "4px";
+      ctx.fillText("DEAD BY DAYLIGHT", 40, 44);
+      ctx.letterSpacing = "0px";
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "11px monospace";
+      ctx.fillText("ADEPT TRACKER", 40, 62);
+
+      // ── big percent
+      ctx.textAlign = "right";
+      ctx.font = "bold 72px monospace";
+      ctx.fillStyle = "#a855f7";
+      ctx.fillText(`${totalPct}%`, W - 40, 72);
+      ctx.font = "12px monospace";
+      ctx.fillStyle = "#6b7280";
+      ctx.fillText(`${s.totalDone} / ${s.totalCount} adepts`, W - 40, 90);
+      ctx.textAlign = "left";
+
+      // ── divider
+      ctx.strokeStyle = "#1f2937";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(40, 108);
+      ctx.lineTo(W - 40, 108);
+      ctx.stroke();
+
+      // ── helper: stat row
+      const drawStat = (
+        label: string,
+        value: string,
+        color: string,
+        x: number,
+        y: number,
+      ) => {
+        ctx.fillStyle = "#6b7280";
+        ctx.font = "11px monospace";
+        ctx.fillText(label, x, y);
+        ctx.fillStyle = color;
+        ctx.font = "bold 22px monospace";
+        ctx.fillText(value, x, y + 26);
+      };
+
+      // ── helper: progress bar
+      const drawBar = (
+        x: number,
+        y: number,
+        w: number,
+        pct: number,
+        color: string,
+      ) => {
+        ctx.fillStyle = "#1f2937";
+        ctx.roundRect(x, y, w, 8, 4);
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(x, y, Math.max(4, (w * pct) / 100), 8, 4);
+        ctx.fill();
+      };
+
+      // ── survivor block
+      drawStat(
+        "SURVIVORS",
+        `${s.survivorsDone}/${s.survivors.length}`,
+        "#60a5fa",
+        40,
+        148,
+      );
+      drawBar(40, 184, 220, survivorPct, "#3b82f6");
+      ctx.fillStyle = "#374151";
+      ctx.font = "11px monospace";
+      ctx.fillText(`${survivorPct}%`, 268, 191);
+
+      // ── killer block
+      drawStat(
+        "KILLERS",
+        `${s.killersDone}/${s.killers.length}`,
+        "#f87171",
+        40,
+        228,
+      );
+      drawBar(40, 264, 220, killerPct, "#ef4444");
+      ctx.fillStyle = "#374151";
+      ctx.font = "11px monospace";
+      ctx.fillText(`${killerPct}%`, 268, 271);
+
+      // ── right-side stat grid
+      const stats = [
+        { label: "STREAK", value: String(s.meta.streak), color: "#fb923c" },
+        {
+          label: "BEST STREAK",
+          value: String(s.meta.bestStreak),
+          color: "#fbbf24",
+        },
+        { label: "EST. DONE", value: s.estimatedCompletion, color: "#c084fc" },
+        {
+          label: "REMAINING",
+          value: String(s.totalCount - s.totalDone),
+          color: "#94a3b8",
+        },
+      ];
+      stats.forEach((st, i) => {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        drawStat(st.label, st.value, st.color, 420 + col * 185, 148 + row * 80);
+      });
+
+      // ── full-width total bar
+      drawBar(40, 320, W - 80, totalPct, "#9333ea");
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "11px monospace";
+      ctx.fillText(`overall completion  ${totalPct}%`, 40, 350);
+
+      // ── recently completed (last 5)
+      const recent = s.allCharacters
+        .filter((c) => s.getProgress(c.id).done && s.getProgress(c.id).doneAt)
+        .sort(
+          (a, b) =>
+            (s.getProgress(b.id).doneAt ?? 0) -
+            (s.getProgress(a.id).doneAt ?? 0),
+        )
+        .slice(0, 5);
+
+      if (recent.length) {
+        ctx.fillStyle = "#374151";
+        ctx.font = "11px monospace";
+        ctx.fillText("RECENT", 40, 390);
+        recent.forEach((c, i) => {
+          const isSurvivor = s.survivors.some((sv) => sv.id === c.id);
+          ctx.fillStyle = isSurvivor ? "#3b82f6" : "#ef4444";
+          ctx.font = "bold 12px monospace";
+          ctx.fillText(c.name, 40 + i * 148, 410);
+        });
+      }
+
+      // ── footer
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(0, H - 36, W, 36);
+      ctx.fillStyle = "#4b5563";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        `generated ${new Date().toLocaleDateString("de-DE")}  ·  dbd-adept-tracker`,
+        W / 2,
+        H - 14,
+      );
+      ctx.textAlign = "left";
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `dbd-adept-${new Date().toISOString().slice(0, 10)}.png`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }, "image/png");
+      showToast("📊 Stat Card gespeichert");
     },
 
     async shareLink(): Promise<void> {
