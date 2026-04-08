@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 import { execSync } from "child_process";
 import { cpSync, existsSync } from "fs";
 import { join, dirname } from "path";
@@ -23,12 +24,13 @@ const die = (msg) => {
 };
 
 function run(cmd, opts = {}) {
-  execSync(cmd, { stdio: "inherit", cwd: DIR, ...opts });
+  // Changed default cwd to BASE_DIR so npm finds package.json
+  execSync(cmd, { stdio: "inherit", cwd: BASE_DIR, ...opts });
 }
 
 function pm2Running(name) {
   try {
-    const out = execSync(`pm2 pid ${name}`, { cwd: DIR, stdio: "pipe" })
+    const out = execSync(`pm2 pid ${name}`, { cwd: BASE_DIR, stdio: "pipe" })
       .toString()
       .trim();
     return out !== "" && out !== "0";
@@ -63,11 +65,23 @@ if (!existsSync(SERVE_SRC)) die(`serve.js not found at ${SERVE_SRC}`);
 
 // ─── 1. Install ───────────────────────────────────────────────────────────────
 step("Installing dependencies");
-run("npm ci --prefer-offline --fund=false --audit=false");
+
+// Ensure package-lock.json exists, otherwise npm ci will always fail
+if (!existsSync(join(BASE_DIR, "package-lock.json"))) {
+  console.log(
+    c.yellow(
+      "! package-lock.json not found. Generating one via 'npm install'...",
+    ),
+  );
+  run("npm install");
+} else {
+  run("npm ci --prefer-offline --fund=false --audit=false");
+}
 ok("Dependencies ready");
 
 // ─── 2. Build ─────────────────────────────────────────────────────────────────
 step("Building project");
+// We call the underlying ionic build or vite build defined in package.json
 run("npm run build");
 ok("Build complete → dist/");
 
@@ -91,7 +105,7 @@ if (pm2Running(APP_NAME)) {
 const divider = c.bold("─".repeat(43));
 console.log(`
 ${divider}
-${c.green(c.bold("  Build & deploy complete"))}
+${c.green(c.bold("   Build & deploy complete"))}
 ${divider}
   App:  ${c.bold(APP_NAME)}
   URL:  ${c.bold("http://localhost:3030")}
