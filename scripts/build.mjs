@@ -5,6 +5,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
+const BASE_DIR = join(DIR, "..");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const c = {
@@ -47,8 +48,8 @@ function which(bin) {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const APP_NAME = "dbd-adept-tracker";
-const SERVE_SRC = join(DIR, "serve.js");
-const SERVE_DST = join(DIR, "dist", "serve.cjs");
+const SERVE_SRC = join(BASE_DIR, "serve.js");
+const SERVE_DST = join(BASE_DIR, "dist", "serve.cjs");
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 for (const bin of ["node", "npm", "pm2"]) {
