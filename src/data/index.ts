@@ -53,7 +53,7 @@ export const TIER_COLORS: Record<string, string> = {
 
 export const WIN_CONDITIONS = {
   survivor:
-    "<strong>Adept Survivor:</strong> Escape the trial using only the 3 unique perks of this character. No other perks, but items/add-ons/offerings are allowed.",
+    "<strong>Adept Survivor:</strong> Escape the trial using only the 3 unique perks of this character. No other perks. Items/Add-ons/Offerings are allowed.",
   killer:
-    "<strong>Adept Killer:</strong> Achieve a <strong>Merciless Killer</strong> result (double pip) using only the 3 unique perks. No other perks, add-ons and offerings are allowed.",
+    "<strong>Adept Killer:</strong> Achieve a <strong>Merciless Killer</strong> result (double pip) using only the 3 unique perks. No other perks. Add-ons and offerings are allowed.",
 } as const;
