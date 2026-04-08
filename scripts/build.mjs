@@ -81,8 +81,7 @@ ok("Dependencies ready");
 
 // ─── 2. Build ─────────────────────────────────────────────────────────────────
 step("Building project");
-// We call the underlying ionic build or vite build defined in package.json
-run("npm run build");
+run("npx vite build");
 ok("Build complete → dist/");
 
 // ─── 3. Copy server ───────────────────────────────────────────────────────────
