@@ -539,38 +539,21 @@ export default defineComponent({
       }
       this.steam.setPhase("syncing");
       try {
-        const [adepts, schema] = await Promise.all([
-          this.steam.fetchAdepts(),
-          this.steam.fetchSchema(),
-        ]);
-
+        const adepts = await this.steam.fetchAdepts();
         const changed: Array<{ id: string; ts: number }> = [];
 
-        if (schema && adepts.length) {
-          const achs = (
-            (schema as Record<string, unknown>).game as Record<string, unknown>
-          )?.availableGameStats as
-            | { achievements?: Array<{ name: string; displayName?: string }> }
-            | undefined;
+        for (const adept of adepts) {
+          const dm = adept.displayName?.match(/^Adept\s+(.+)$/i);
+          if (!dm) continue;
 
-          const schemaMap = new Map(
-            achs?.achievements?.map((a) => [a.name, a]) ?? [],
+          const search = dm[1].trim().toLowerCase();
+          const ch = this.store.allCharacters.find(
+            (c) =>
+              c.name.toLowerCase() === search ||
+              c.name.toLowerCase().replace(/^the\s+/, "") === search,
           );
-
-          for (const adept of adepts) {
-            const schemaAch = schemaMap.get(adept.apiname);
-            const dm = schemaAch?.displayName?.match(/^Adept\s+(.+)$/i);
-            if (!dm) continue;
-
-            const search = dm[1].trim().toLowerCase();
-            const ch = this.store.allCharacters.find(
-              (c) =>
-                c.name.toLowerCase() === search ||
-                c.name.toLowerCase().replace(/^the\s+/, "") === search,
-            );
-            if (ch && !this.store.getProgress(ch.id).done) {
-              changed.push({ id: ch.id, ts: adept.unlocktime ?? Date.now() });
-            }
+          if (ch && !this.store.getProgress(ch.id).done) {
+            changed.push({ id: ch.id, ts: adept.unlocktime ?? Date.now() });
           }
         }
 

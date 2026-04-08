@@ -13,6 +13,7 @@ interface SteamAchievement {
   achieved: number;
   unlocktime?: number;
   name: string;
+  displayName?: string;
 }
 
 const KEYS = { key: "dbd_steam_key", id: "dbd_steam_id" } as const;
@@ -70,14 +71,26 @@ export const useSteamStore = defineStore("steam", {
     },
 
     async fetchAdepts(): Promise<SteamAchievement[]> {
-      const unlocked = await this.fetchAchievements();
-      const adepts: SteamAchievement[] = [];
-      for (const a of unlocked) {
-        if (a.name.toLowerCase().includes("adept")) {
-          adepts.push(a);
-        }
-      }
-      return adepts;
+      const [unlocked, schema] = await Promise.all([
+        this.fetchAchievements(),
+        this.fetchSchema(),
+      ]);
+
+      const achs = (
+        (schema as Record<string, unknown>)?.game as Record<string, unknown>
+      )?.availableGameStats as
+        | { achievements?: Array<{ name: string; displayName?: string }> }
+        | undefined;
+
+      const adeptSchemaMap = new Map(
+        achs?.achievements
+          ?.filter((a) => /^Adept\s+/i.test(a.displayName ?? ""))
+          .map((a) => [a.name, a.displayName]) ?? [],
+      );
+
+      return unlocked
+        .filter((a) => adeptSchemaMap.has(a.apiname))
+        .map((a) => ({ ...a, displayName: adeptSchemaMap.get(a.apiname) }));
     },
 
     async fetchAchievements(): Promise<SteamAchievement[]> {
