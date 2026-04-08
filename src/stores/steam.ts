@@ -144,6 +144,24 @@ export const useSteamStore = defineStore("steam", {
       }
     },
 
+    /**
+     * Test-drive a key+id pair without persisting them.
+     * Returns the number of unlocked Adept achievements on success,
+     * or throws a user-readable Error on failure.
+     */
+    async testConnection(key: string, steamId: string): Promise<number> {
+      const { key: savedKey, steamId: savedId } = this.creds;
+      // Temporarily swap creds for the test fetch
+      this.creds = { key, steamId };
+      try {
+        const adepts = await this.fetchAdepts();
+        return adepts.length;
+      } finally {
+        // Always restore — creds are only persisted via saveCreds()
+        this.creds = { key: savedKey, steamId: savedId };
+      }
+    },
+
     validateKey(k: string): { valid: boolean; msg: string } {
       if (!k) return { valid: false, msg: "" };
       if (/^[A-F0-9]{32}$/i.test(k)) return { valid: true, msg: "✓ Gültig" };
