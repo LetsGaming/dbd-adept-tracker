@@ -547,13 +547,21 @@ export default defineComponent({
           if (!dm) continue;
 
           const search = dm[1].trim().toLowerCase();
-          const ch = this.store.allCharacters.find(
-            (c) =>
-              c.name.toLowerCase() === search ||
-              c.name.toLowerCase().replace(/^the\s+/, "") === search,
-          );
+          const ch = this.store.allCharacters.find((c) => {
+            const name = c.name.toLowerCase();
+            const nameWithoutThe = name.replace(/^the\s+/, "");
+            return (
+              name === search ||
+              nameWithoutThe === search ||
+              name.startsWith(search + " ") ||
+              nameWithoutThe.startsWith(search + " ")
+            );
+          });
           if (ch && !this.store.getProgress(ch.id).done) {
-            changed.push({ id: ch.id, ts: adept.unlocktime ?? Date.now() });
+            changed.push({
+              id: ch.id,
+              ts: adept.unlocktime ? adept.unlocktime * 1000 : Date.now(),
+            });
           }
         }
 
