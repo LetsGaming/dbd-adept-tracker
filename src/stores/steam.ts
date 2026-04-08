@@ -1,0 +1,159 @@
+import { defineStore } from "pinia";
+import type { SyncPhase, SteamCreds } from "@/types";
+import { StorageService } from "@/services/storage";
+
+interface SteamState {
+  phase: SyncPhase;
+  message: string;
+  creds: SteamCreds;
+}
+
+interface SteamAchievement {
+  apiname: string;
+  achieved: number;
+  unlocktime?: number;
+  name: string;
+}
+
+const KEYS = { key: "dbd_steam_key", id: "dbd_steam_id" } as const;
+
+export const useSteamStore = defineStore("steam", {
+  state: (): SteamState => ({
+    phase: "idle",
+    message: "",
+    creds: {
+      key: StorageService.getString(KEYS.key) ?? "",
+      steamId: StorageService.getString(KEYS.id) ?? "",
+    },
+  }),
+
+  getters: {
+    hasCreds(): boolean {
+      return Boolean(this.creds.key && this.creds.steamId);
+    },
+  },
+
+  actions: {
+    saveCreds(key: string, steamId: string): void {
+      this.creds = { key, steamId };
+      StorageService.setString(KEYS.key, key);
+      StorageService.setString(KEYS.id, steamId);
+    },
+
+    clearCreds(): void {
+      this.creds = { key: "", steamId: "" };
+      StorageService.remove(KEYS.key);
+      StorageService.remove(KEYS.id);
+      this.phase = "idle";
+    },
+
+    setPhase(phase: SyncPhase, message = ""): void {
+      this.phase = phase;
+      this.message = message;
+    },
+
+    async proxyFetch(steamUrl: string): Promise<unknown> {
+      const proxyUrl = `/api/steam?url=${encodeURIComponent(steamUrl)}`;
+      console.info("[Steam] Proxy:", proxyUrl.slice(0, 80) + "…");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const r = await fetch(proxyUrl, { signal: controller.signal });
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          throw new Error(`Proxy HTTP ${r.status}: ${text.slice(0, 100)}`);
+        }
+        return await r.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+
+    async fetchAdepts(): Promise<SteamAchievement[]> {
+      const unlocked = await this.fetchAchievements();
+      const adepts: SteamAchievement[] = [];
+      for (const a of unlocked) {
+        if (a.name.toLowerCase().includes("adept")) {
+          adepts.push(a);
+        }
+      }
+      return adepts;
+    },
+
+    async fetchAchievements(): Promise<SteamAchievement[]> {
+      const { key, steamId } = this.creds;
+      const url = `https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/?appid=381210&key=${encodeURIComponent(key)}&steamid=${encodeURIComponent(steamId)}&l=english&format=json`;
+      const d = (await this.proxyFetch(url)) as Record<string, unknown>;
+      const ps = (
+        d as {
+          playerstats?: {
+            error?: string;
+            achievements?: Array<{
+              apiname: string;
+              achieved: number;
+              unlocktime?: number;
+            }>;
+          };
+        }
+      ).playerstats;
+
+      if (ps?.error) {
+        if (/invalid/i.test(ps.error)) throw new Error("API Key ungültig.");
+        if (/private/i.test(ps.error)) throw new Error("Profil privat.");
+        throw new Error(`Steam: ${ps.error}`);
+      }
+      if (!ps?.achievements) throw new Error("Keine Achievement-Daten.");
+
+      const unlocked: SteamAchievement[] = [];
+      for (const a of ps.achievements) {
+        if (a.achieved === 1)
+          unlocked.push({
+            apiname: a.apiname,
+            achieved: a.achieved,
+            unlocktime: a.unlocktime,
+            name: a.apiname.replace(/_/g, " "),
+          });
+      }
+      return unlocked;
+    },
+
+    async fetchSchema(): Promise<unknown> {
+      const base =
+        "https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?appid=381210&format=json&l=english";
+      const url = this.creds.key
+        ? `${base}&key=${encodeURIComponent(this.creds.key)}`
+        : base;
+      try {
+        return await this.proxyFetch(url);
+      } catch (e) {
+        console.warn("[Steam] Schema failed:", (e as Error).message);
+        return null;
+      }
+    },
+
+    validateKey(k: string): { valid: boolean; msg: string } {
+      if (!k) return { valid: false, msg: "" };
+      if (/^[A-F0-9]{32}$/i.test(k)) return { valid: true, msg: "✓ Gültig" };
+      if (k.length < 32)
+        return { valid: false, msg: `Noch ${32 - k.length} Zeichen` };
+      return { valid: false, msg: "Ungültig" };
+    },
+
+    parseSteamId(input: string): { valid: boolean; id: string; msg: string } {
+      if (!input) return { valid: false, id: "", msg: "" };
+      const s = input.trim();
+      if (/^\d{17}$/.test(s))
+        return { valid: true, id: s, msg: "✓ Steam ID64" };
+      const pm = s.match(/steamcommunity\.com\/profiles\/(\d{17})/);
+      if (pm) return { valid: true, id: pm[1], msg: "✓ ID64 aus URL" };
+      const vm = s.match(/steamcommunity\.com\/id\/([^/\s]+)/);
+      if (vm)
+        return {
+          valid: false,
+          id: "",
+          msg: "⚠ Vanity-URL — steamid.io nutzen",
+        };
+      return { valid: false, id: "", msg: "Steam ID64 oder Profil-URL" };
+    },
+  },
+});

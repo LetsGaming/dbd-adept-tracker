@@ -1,0 +1,59 @@
+import type {
+  CharacterProgress,
+  HotkeyMap,
+  MetaData,
+  AppSettings,
+} from "@/types";
+
+export { SURVIVORS } from "./survivors";
+export { KILLERS } from "./killers";
+
+export const DEFAULT_PROGRESS: CharacterProgress = {
+  done: false,
+  doneAt: null,
+  tries: 0,
+  priority: false,
+  owned: true,
+  note: "",
+  build: null,
+  attempts: [],
+};
+
+export const DEFAULT_HOTKEYS: Readonly<HotkeyMap> = {
+  markDone: ["d"],
+  addTry: ["t"],
+  removeTry: ["r"],
+};
+
+export const DEFAULT_META: MetaData = {
+  streak: 0,
+  bestStreak: 0,
+  lastFailAt: 0,
+  totalSessions: 0,
+  firstPlayAt: 0,
+};
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  hotkeys: { ...DEFAULT_HOTKEYS },
+  vimMode: false,
+  autoTheme: false,
+  autoThemeLight: "07:00",
+  autoThemeDark: "20:00",
+};
+
+export const TIER_LABELS = ["S", "A", "B", "C", "D"] as const;
+
+export const TIER_COLORS: Record<string, string> = {
+  S: "#ff4444",
+  A: "#ff8c00",
+  B: "#ffd700",
+  C: "#4ade80",
+  D: "#60a5fa",
+};
+
+export const WIN_CONDITIONS = {
+  survivor:
+    "<strong>Adept Survivor:</strong> Escape the trial using only the 3 unique perks of this character. No other perks, but items/add-ons/offerings are allowed.",
+  killer:
+    "<strong>Adept Killer:</strong> Achieve a <strong>Merciless Killer</strong> result (double pip) using only the 3 unique perks. No other perks, add-ons and offerings are allowed.",
+} as const;

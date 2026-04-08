@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Ionic overrides */
+ion-content {
+  --background: var(--color-bg-base);
+  color: var(--color-text-primary);
+}
+
+ion-header ion-toolbar {
+  --background: var(--color-bg-header);
+  --color: var(--color-text-primary);
+  --border-color: var(--color-border-subtle);
+}
+
+ion-footer {
+  --background: transparent;
+  background: transparent;
+}
+
+ion-footer::before {
+  display: none !important;
+}
+
+ion-modal {
+  --background: var(--color-bg-modal);
+  --color: var(--color-text-primary);
+  color: var(--color-text-primary);
+}
+
+ion-modal ion-toolbar {
+  --background: var(--color-bg-header);
+  --color: var(--color-text-primary);
+  --border-color: var(--color-border-subtle);
+}
+
+ion-modal ion-content {
+  --background: var(--color-bg-modal);
+  color: var(--color-text-primary);
+}
+
+ion-modal ion-title {
+  color: var(--color-text-primary);
+}
+
+ion-modal ion-button {
+  --color: var(--color-accent);
+}
+
+/* Force text color inheritance everywhere */
+ion-app {
+  --ion-background-color: var(--color-bg-base);
+  --ion-text-color: var(--color-text-primary);
+  --ion-toolbar-background: var(--color-bg-header);
+  --ion-toolbar-color: var(--color-text-primary);
+  color: var(--color-text-primary);
+}
+
+/* Toast */
+ion-toast {
+  --background: var(--color-bg-elevated);
+  --color: var(--color-text-primary);
+  --border-radius: 20px;
+  --box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+/* Theme tokens as CSS variables for Tailwind */
+:root {
+  --font-display: 'Cinzel', serif;
+  --animate-fade-in: fade-in 0.3s ease;
+  --color-survivor: #22d3ee;
+  --color-killer: #f87171;
+  --color-bg-base: #0d0d1a;
+  --color-bg-raised: #13132a;
+  --color-bg-elevated: #1a1a35;
+  --color-bg-card: #181830;
+  --color-bg-header: #0a0a18;
+  --color-bg-modal: #161630;
+  --color-border-subtle: #2a2a4a;
+  --color-border-medium: #383860;
+  --color-text-primary: #f0f0f8;
+  --color-text-secondary: #a0a0c8;
+  --color-text-muted: #686890;
+  --color-text-faint: #454568;
+  --color-accent: var(--color-survivor);
+  --color-done-bg: #04181c;
+}
+
+[data-theme="light"] {
+  --color-bg-base: #f2f2f7;
+  --color-bg-raised: #fff;
+  --color-bg-elevated: #f0f0f5;
+  --color-bg-card: #fff;
+  --color-bg-header: #fff;
+  --color-bg-modal: #fff;
+  --color-border-subtle: #e0e0ec;
+  --color-border-medium: #c8c8dc;
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #4a4a6a;
+  --color-text-muted: #7a7a9a;
+  --color-text-faint: #b0b0c8;
+  --color-survivor: #0891b2;
+  --color-killer: #dc2626;
+  --color-done-bg: #f0fdff;
+}
+
+[data-theme="oled"] {
+  --color-bg-base: #000;
+  --color-bg-raised: #0a0a0a;
+  --color-bg-elevated: #111;
+  --color-bg-card: #0d0d0d;
+  --color-bg-header: #000;
+  --color-bg-modal: #0a0a0a;
+  --color-border-subtle: #1a1a1a;
+  --color-border-medium: #2a2a2a;
+  --color-text-primary: #fff;
+  --color-text-secondary: #aaa;
+  --color-text-muted: #666;
+  --color-text-faint: #333;
+  --color-done-bg: #0a1210;
+}
