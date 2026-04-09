@@ -4,40 +4,39 @@ import { StorageService, TTL } from "./storage";
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const WIKI_API = "https://deadbydaylight.wiki.gg/api.php";
-const CACHE_KEY = (side: Side) => `roster_${side}_v5`;
+const WIKI_CDN = "https://deadbydaylight.wiki.gg/images/";
+const CACHE_KEY = (side: Side) => `roster_${side}_v6`;
 
-const CATEGORY_CANDIDATES: Record<Side, string[]> = {
-  survivor: ["Survivors", "Survivor", "Survivor characters"],
-  killer: ["Killers", "Killer", "Killer characters"],
-};
+// ─── Name overrides ───────────────────────────────────────────────────────────
 
-// ─── Name normalisation ───────────────────────────────────────────────────────
-
+/**
+ * Maps wiki charPortraitName link titles → { id, name } where the wiki title
+ * differs from the in-game display name shown in character-select.
+ * Keys are lowercased for case-insensitive lookup.
+ */
 const WIKI_TO_APP = new Map<string, { id: string; name: string }>([
-  // Killers whose DISPLAYTITLE uses {{#Invoke}} (can't be parsed statically)
-  ["vecna", { id: "lich", name: "The Lich" }],
-  ["dracula", { id: "darklord", name: "The Dark Lord" }],
-
-  // Survivors: wiki canonical title → in-game display name
-  ["ashley j. williams", { id: "ash", name: "Ash Williams" }],
-  ["detective david tapp", { id: "tapp", name: "Detective Tapp" }],
-  ['jeffrey "jeff" johansen', { id: "jeff", name: "Jeff Johansen" }],
-  ['william "bill" overbeck', { id: "bill", name: "Bill Overbeck" }],
+  // Survivors whose wiki page title ≠ in-game display name
+  ["david tapp", { id: "tapp", name: "Detective Tapp" }],
   ["lee yun-jin", { id: "yun", name: "Yun-Jin Lee" }],
   ["leon scott kennedy", { id: "leon", name: "Leon S. Kennedy" }],
   ["michonne grimes", { id: "michonne", name: "Michonne" }],
   ["vee boonyasak", { id: "vee", name: "Vee" }],
-  ["aestri yazar & baermar uraz", { id: "aestri", name: "Aestri Yazar" }],
+  // Killers whose DISPLAYTITLE embeds {{#Invoke}} (can't be parsed from wikitext)
+  // Their charPortraitName link titles are correct, so no override needed here
 ]);
 
+/**
+ * Wiki page entries that cover multiple in-game characters.
+ * All entries share the same portrait and perks.
+ */
 const SPLIT_PAGES: Record<string, Array<{ id: string; name: string }>> = {
-  "Aestri Yazar & Baermar Uraz": [
+  "The Troupe": [
     { id: "aestri", name: "Aestri Yazar" },
     { id: "baermar", name: "Baermar Uraz" },
   ],
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── ID derivation ────────────────────────────────────────────────────────────
 
 function slug(s: string): string {
   return s
@@ -47,10 +46,10 @@ function slug(s: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function deriveId(gameName: string, side: Side): string {
-  if (side === "killer") return slug(gameName.replace(/^The\s+/i, ""));
+function deriveId(name: string, side: Side): string {
+  if (side === "killer") return slug(name.replace(/^The\s+/i, ""));
   const PREFIXES = new Set(["detective", "dr", "sir", "lady"]);
-  const parts = gameName.split(/\s+/);
+  const parts = name.split(/\s+/);
   const first = slug(parts[0]);
   return PREFIXES.has(first) && parts.length > 1
     ? slug(parts[parts.length - 1])
@@ -75,160 +74,98 @@ async function wikiQuery(
   return res.json() as Promise<Record<string, unknown>>;
 }
 
-// ─── Category discovery ───────────────────────────────────────────────────────
+// ─── Fetch and parse the rendered overview page ───────────────────────────────
 
-async function discoverCategoryPages(side: Side): Promise<string[]> {
-  for (const category of CATEGORY_CANDIDATES[side]) {
-    try {
-      const data = (await wikiQuery({
-        action: "query",
-        list: "categorymembers",
-        cmtitle: `Category:${category}`,
-        cmnamespace: "0",
-        cmlimit: "500",
-        cmtype: "page",
-      })) as { query?: { categorymembers?: Array<{ title: string }> } };
-
-      const titles = (data.query?.categorymembers ?? []).map((m) => m.title);
-      if (titles.length >= 10) {
-        console.info(
-          `[RosterService] Category:${category} → ${titles.length} ${side} pages`,
-        );
-        return titles;
-      }
-    } catch {
-      /* try next */
-    }
-  }
-  return [];
+async function fetchRosterHtml(side: Side): Promise<string> {
+  const page = side === "killer" ? "Killers" : "Survivors";
+  const data = (await wikiQuery({
+    action: "parse",
+    page,
+    prop: "text",
+    disablelimitreport: "1",
+    disableeditsection: "1",
+  })) as { parse?: { text?: { "*"?: string } } };
+  return data.parse?.text?.["*"] ?? "";
 }
 
-// ─── Wikitext fetch ───────────────────────────────────────────────────────────
-
-async function fetchWikitexts(titles: string[]): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
-  for (let i = 0; i < titles.length; i += 50) {
-    const batch = titles.slice(i, i + 50);
-    try {
-      const data = (await wikiQuery({
-        action: "query",
-        prop: "revisions",
-        titles: batch.join("|"),
-        rvprop: "content",
-        rvslots: "main",
-        rvsection: "0",
-      })) as {
-        query?: {
-          pages?: Record<
-            string,
-            {
-              title?: string;
-              revisions?: Array<{
-                slots?: { main?: { "*"?: string } };
-                "*"?: string;
-              }>;
-            }
-          >;
-        };
-      };
-      for (const page of Object.values(data.query?.pages ?? {})) {
-        if (!page.title) continue;
-        const rev = page.revisions?.[0];
-        const text = rev?.slots?.main?.["*"] ?? rev?.["*"] ?? "";
-        if (text) result.set(page.title, text);
-      }
-    } catch {
-      /* skip batch */
-    }
-  }
-  return result;
-}
-
-function extractDisplayTitle(wikitext: string, side: Side): string | null {
-  const m = wikitext.match(/\{\{DISPLAYTITLE\s*:\s*([^}]+)\}\}/i);
-  if (!m) return null;
-  const raw = m[1].trim();
-  if (raw.includes("{{")) return null;
-
-  if (side === "killer") {
-    const dashIdx = raw.search(/\s[—–-]\s/);
-    if (dashIdx === -1) return null;
-    const alias = raw
-      .slice(dashIdx)
-      .replace(/^\s*[—–-]\s*/, "")
-      .trim();
-    return alias || null;
-  }
-  return raw || null;
-}
-
-function resolveGameName(
-  wikiTitle: string,
-  wikitext: string,
-  side: Side,
-): { id: string; name: string } {
-  const mapped = WIKI_TO_APP.get(wikiTitle.toLowerCase());
-  if (mapped) return mapped;
-
-  const dt = extractDisplayTitle(wikitext, side);
-  if (dt) return { id: deriveId(dt, side), name: dt };
-
-  if (side === "killer" && /^The\s+\w/i.test(wikiTitle)) {
-    return { id: deriveId(wikiTitle, side), name: wikiTitle };
-  }
-
-  return { id: deriveId(wikiTitle, side), name: wikiTitle };
-}
-
-// ─── Role extraction ──────────────────────────────────────────────────────────
-
-function extractRole(wikitext: string): string {
-  const m = wikitext.match(
-    /\[\[(?:CHAPTER[^|]+\|)?([^\]]+)\]\],?\s*a\s+(?:Chapter|Half-Chapter)/i,
-  );
-  return m ? m[1].trim() : "";
-}
-
-// ─── Fetch from wiki ──────────────────────────────────────────────────────────
-
-interface WikiCharData {
-  id: string;
-  name: string;
-  role: string;
-  isNew: boolean;
-}
-
-async function fetchFromWiki(
+/**
+ * Parses the rendered Killers / Survivors wiki page HTML.
+ *
+ * Each .charPortraitWrapper element contains:
+ *   .charPortraitImage img   → portrait filename (from src attribute)
+ *   .charPortraitName a      → wiki display name (from title attribute)
+ *   .charPortraitPerk a[title] → perk names (from title attributes, 3 per char)
+ */
+function parseRosterHtml(
+  html: string,
   side: Side,
   seedIdByName: Map<string, string>,
-): Promise<WikiCharData[]> {
-  const pageTitles = await discoverCategoryPages(side);
-  if (!pageTitles.length)
-    throw new Error(`No category pages found for ${side}`);
+): Character[] {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const wrappers = doc.querySelectorAll(".charPortraitWrapper");
+  const chars: Character[] = [];
 
-  const wikitexts = await fetchWikitexts(pageTitles);
-  const results: WikiCharData[] = [];
+  for (const wrapper of Array.from(wrappers)) {
+    // ── Portrait filename from img src ──────────────────────────────────────
+    const imgEl = wrapper.querySelector(".charPortraitImage img");
+    const src = imgEl?.getAttribute("src") ?? "";
+    // Strip /images/ prefix and ?cache-buster suffix
+    const portrait = src.replace(/^.*\/([^/?]+)(\?.*)?$/, "$1");
+    // Skip if it doesn't look like a portrait file
+    if (!portrait.match(/^[KS]\d{2,3}_.*Portrait\.png$/i)) continue;
 
-  for (const wikiTitle of pageTitles) {
-    const wikitext = wikitexts.get(wikiTitle) ?? "";
-    if (!/#Invoke\s*:\s*(Killers|Survivors)\s*\|/i.test(wikitext)) continue;
+    // ── Character name from charPortraitName link ──────────────────────────
+    const nameLink = wrapper.querySelector(".charPortraitName a");
+    const wikiName = nameLink?.getAttribute("title")?.trim() ?? "";
+    if (!wikiName) continue;
 
-    const splits = SPLIT_PAGES[wikiTitle];
+    // ── Perks from charPortraitPerk links ──────────────────────────────────
+    const perkLinks = Array.from(
+      wrapper.querySelectorAll(".charPortraitPerk a[title]"),
+    );
+    const perks = perkLinks
+      .map((a) => a.getAttribute("title")?.trim() ?? "")
+      .filter(Boolean)
+      .slice(0, 3);
+    if (perks.length < 3) continue;
+
+    const [perk1, perk2, perk3] = perks;
+    if (!perk1 || !perk2 || !perk3) continue;
+    const perkTuple: readonly [string, string, string] = [perk1, perk2, perk3];
+
+    // ── Split pages (e.g. "The Troupe" → Aestri + Baermar) ────────────────
+    const splits = SPLIT_PAGES[wikiName];
     if (splits) {
-      const role = extractRole(wikitext);
       for (const { id, name } of splits) {
-        results.push({ id, name, role, isNew: !seedIdByName.has(name) });
+        chars.push({
+          id,
+          name,
+          role: "",
+          img: portrait,
+          perks: perkTuple,
+        });
       }
       continue;
     }
 
-    const { id: resolvedId, name } = resolveGameName(wikiTitle, wikitext, side);
-    const id = seedIdByName.get(name) ?? resolvedId;
-    const role = extractRole(wikitext);
-    results.push({ id, name, role, isNew: !seedIdByName.has(name) });
+    // ── Resolve display name and ID ─────────────────────────────────────────
+    const mapped = WIKI_TO_APP.get(wikiName.toLowerCase());
+    const appName = mapped?.name ?? wikiName;
+    const id =
+      mapped?.id ?? seedIdByName.get(appName) ?? deriveId(appName, side);
+    const isNew = !seedIdByName.has(appName) && !mapped;
+
+    chars.push({
+      id,
+      name: appName,
+      role: "",
+      img: portrait,
+      perks: perkTuple,
+      ...(isNew ? { isNew: true } : {}),
+    });
   }
 
-  return results;
+  return chars;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -237,52 +174,62 @@ export const RosterService = {
   /**
    * Returns the complete character roster for the given side.
    *
-   * Seed is always the immutable baseline — no character is ever dropped.
-   * Wiki data updates name/role for known characters and appends new ones.
-   * Portraits and perks always come from the seed (reliable, correct format).
-   * New characters from wiki appear with empty perks until the seed is updated.
+   * Sources in priority order:
+   *  1. Fresh localStorage cache (24 h TTL)
+   *  2. wiki.gg Killers/Survivors overview page (rendered HTML parse)
+   *     → correct portrait filenames, current perks, new characters
+   *  3. Static seed fallback (if wiki unreachable)
+   *
+   * Seed is always the baseline for role strings and ID preservation.
+   * Wiki data overlays portrait, perks, and discovers new characters.
    */
   async load(side: Side, seed: readonly Character[]): Promise<Character[]> {
     const cacheKey = CACHE_KEY(side);
 
+    // Reject cache entries with old charSelect filenames (stale data guard)
     const cached = StorageService.cacheFresh<Character[]>(cacheKey, TTL.CHARS);
-    // Reject cache entries that still use the old charSelect_portrait filename format
-    const cacheIsClean =
+    if (
       cached &&
       cached.length >= seed.length &&
-      !cached.some((c) => c.img.includes("charSelect"));
-    if (cacheIsClean) return cached!;
+      !cached.some((c) => c.img.includes("charSelect"))
+    ) {
+      return cached;
+    }
 
+    // Build seed lookups for ID/role preservation
     const seedIdByName = new Map<string, string>(
       seed.map((c) => [c.name, c.id]),
     );
-    const result = new Map<string, Character>(
+    const seedById = new Map<string, Character>(
       seed.map((c) => [c.id, { ...c }]),
     );
 
-    try {
-      const wikiData = await fetchFromWiki(side, seedIdByName);
+    // Start with seed as the complete baseline
+    const result = new Map<string, Character>(seedById);
 
-      for (const w of wikiData) {
-        const existing = result.get(w.id);
-        if (existing) {
-          // Update display name and role from wiki; keep seed portrait and perks
-          result.set(w.id, {
-            ...existing,
-            name: w.name || existing.name,
-            role: w.role || existing.role,
-            // img and perks intentionally kept from seed
-          });
-        } else {
-          // New character — no portrait or perks yet (emoji placeholder shown)
-          result.set(w.id, {
-            id: w.id,
-            name: w.name,
-            role: w.role,
-            img: "",
-            perks: [] as unknown as readonly [string, string, string],
-            isNew: true,
-          });
+    try {
+      const html = await fetchRosterHtml(side);
+      const wikiChars = parseRosterHtml(html, side, seedIdByName);
+
+      if (wikiChars.length < seed.length * 0.8) {
+        console.warn(
+          `[RosterService] Only parsed ${wikiChars.length} ${side}s from wiki, expected ≥${Math.ceil(seed.length * 0.8)}`,
+        );
+      } else {
+        for (const w of wikiChars) {
+          const existing = result.get(w.id);
+          if (existing) {
+            result.set(w.id, {
+              ...existing,
+              // Take portrait and perks from wiki (current)
+              // Keep role from seed (wiki overview pages don't show DLC names)
+              img: w.img || existing.img,
+              perks: w.perks,
+            });
+          } else {
+            // New character not yet in seed
+            result.set(w.id, w);
+          }
         }
       }
     } catch (e) {

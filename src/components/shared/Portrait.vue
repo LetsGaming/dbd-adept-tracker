@@ -18,7 +18,7 @@
       class="absolute inset-0 w-full h-full object-cover object-top"
       :style="{ opacity: loaded ? 1 : 0, transition: 'opacity 0.2s' }"
       @load="loaded = true"
-      @error="loaded = false"
+      @error="onError"
     />
   </div>
 </template>
@@ -34,6 +34,19 @@ const SIZE_MAP = {
   lg: { w: "50px", h: "50px" },
 } as const;
 
+/**
+ * Builds the fallback portrait URL using the legacy charSelect naming convention.
+ * e.g. K25_TheCenobite_Portrait.png → K25_charSelect_portrait.png
+ *
+ * This format is confirmed present on wiki.gg for the older characters.
+ * It serves as a safety net when the new _Portrait.png file hasn't been
+ * uploaded to wiki.gg yet.
+ */
+function charSelectFallback(imgFile: string): string | null {
+  const prefix = imgFile.match(/^([KS]\d{2,3})/)?.[1];
+  return prefix ? `${WIKI_CDN}${prefix}_charSelect_portrait.png` : null;
+}
+
 export default defineComponent({
   name: "Portrait",
   props: {
@@ -45,6 +58,7 @@ export default defineComponent({
   data() {
     return {
       url: null as string | null,
+      fallbackUrl: null as string | null,
       loaded: false,
       sizeMap: SIZE_MAP,
     };
@@ -60,14 +74,37 @@ export default defineComponent({
   },
   methods: {
     resolve(): void {
-      if (!this.imgFile) return;
-      // Full URL already (e.g. from wiki fetch) — use as-is
-      if (this.imgFile.startsWith("http")) {
-        this.url = this.imgFile;
+      if (!this.imgFile) {
+        this.url = null;
+        this.fallbackUrl = null;
         return;
       }
-      // Filename — construct the wiki.gg CDN URL directly
+
+      if (this.imgFile.startsWith("http")) {
+        // Already a full URL — use directly, no fallback needed
+        this.url = this.imgFile;
+        this.fallbackUrl = null;
+        return;
+      }
+
+      // Primary: new _Portrait.png format
+      // e.g. K29_TheMastermind_Portrait.png
       this.url = `${WIKI_CDN}${this.imgFile}`;
+      // Fallback: old charSelect format that wiki.gg still hosts for older characters
+      // e.g. K29_charSelect_portrait.png
+      this.fallbackUrl = charSelectFallback(this.imgFile);
+    },
+
+    onError(): void {
+      if (this.fallbackUrl) {
+        // New-format URL failed (ORB / 404) — try the legacy charSelect URL
+        this.url = this.fallbackUrl;
+        this.fallbackUrl = null; // only one fallback attempt
+      } else {
+        // Both URLs exhausted — stay hidden, emoji placeholder remains visible
+        this.url = null;
+        this.loaded = false;
+      }
     },
   },
 });
