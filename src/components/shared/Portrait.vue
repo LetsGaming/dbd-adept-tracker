@@ -10,7 +10,7 @@
       background: 'var(--color-bg-elevated)',
     }"
   >
-    <span v-if="!loaded" class="text-2xl">{{ isKiller ? '💀' : '🧑' }}</span>
+    <span v-if="!loaded" class="text-2xl">{{ isKiller ? "💀" : "🧑" }}</span>
     <img
       v-if="url"
       :src="url"
@@ -24,69 +24,50 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
-import { WikiApi } from '@/services';
+import { defineComponent } from "vue";
+
+const WIKI_CDN = "https://deadbydaylight.wiki.gg/images/";
 
 const SIZE_MAP = {
-  sm: { w: '40px', h: '40px' },
-  md: { w: '58px', h: '58px' },
-  lg: { w: '50px', h: '50px' },
+  sm: { w: "40px", h: "40px" },
+  md: { w: "58px", h: "58px" },
+  lg: { w: "50px", h: "50px" },
 } as const;
 
-const RETRY_DELAYS = [800, 3000, 8000]; // ms — three attempts then give up
-
 export default defineComponent({
-  name: 'Portrait',
+  name: "Portrait",
   props: {
-    imgFile: { type: String, default: '' },
+    imgFile: { type: String, default: "" },
     done: { type: Boolean, default: false },
     isKiller: { type: Boolean, default: false },
-    size: { type: String as () => 'sm' | 'md' | 'lg', default: 'md' },
+    size: { type: String as () => "sm" | "md" | "lg", default: "md" },
   },
   data() {
     return {
       url: null as string | null,
       loaded: false,
       sizeMap: SIZE_MAP,
-      _retryTimers: [] as ReturnType<typeof setTimeout>[],
     };
   },
   watch: {
     imgFile(): void {
       this.loaded = false;
-      this.cancelRetries();
-      this.tryResolve();
+      this.resolve();
     },
   },
   mounted(): void {
-    this.tryResolve();
-  },
-  beforeUnmount(): void {
-    this.cancelRetries();
+    this.resolve();
   },
   methods: {
-    tryResolve(): void {
+    resolve(): void {
       if (!this.imgFile) return;
-      const cached = WikiApi.getPortraitUrl(this.imgFile);
-      if (cached) {
-        this.url = cached;
+      // Full URL already (e.g. from wiki fetch) — use as-is
+      if (this.imgFile.startsWith("http")) {
+        this.url = this.imgFile;
         return;
       }
-      // Schedule limited retries — far cheaper than a continuous setInterval per component
-      this.cancelRetries();
-      RETRY_DELAYS.forEach((delay) => {
-        const id = setTimeout(() => {
-          if (!this.url) {
-            const resolved = WikiApi.getPortraitUrl(this.imgFile);
-            if (resolved) this.url = resolved;
-          }
-        }, delay);
-        this._retryTimers.push(id);
-      });
-    },
-    cancelRetries(): void {
-      this._retryTimers.forEach(clearTimeout);
-      this._retryTimers = [];
+      // Filename — construct the wiki.gg CDN URL directly
+      this.url = `${WIKI_CDN}${this.imgFile}`;
     },
   },
 });

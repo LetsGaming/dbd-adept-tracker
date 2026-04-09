@@ -17,7 +17,7 @@ import {
   DEFAULT_PROGRESS,
   DEFAULT_META,
 } from "@/data";
-import { StorageService, WikiApi, RosterService } from "@/services";
+import { StorageService, RosterService } from "@/services";
 
 const STORAGE_KEYS = {
   progress: "dbd_progress",
@@ -205,12 +205,6 @@ export const useProgressStore = defineStore("progress", {
       ]);
       this.survivors = survivors;
       this.killers = killers;
-
-      // Portrait URLs for any new characters won't be in the existing cache
-      const allImgs = [...survivors, ...killers]
-        .map((c) => c.img)
-        .filter(Boolean);
-      WikiApi.prefetchAll(allImgs);
     },
 
     /** Force-refresh roster from wiki on next load (e.g. manual refresh button). */
