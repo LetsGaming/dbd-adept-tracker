@@ -11,8 +11,13 @@ import type {
   StatsSortCol,
   SortDir,
 } from "@/types";
-import { SURVIVORS, KILLERS, DEFAULT_PROGRESS, DEFAULT_META } from "@/data";
-import { StorageService } from "@/services/storage";
+import {
+  SEED_SURVIVORS,
+  SEED_KILLERS,
+  DEFAULT_PROGRESS,
+  DEFAULT_META,
+} from "@/data";
+import { StorageService, WikiApi, RosterService } from "@/services";
 
 const STORAGE_KEYS = {
   progress: "dbd_progress",
@@ -61,8 +66,8 @@ export const useProgressStore = defineStore("progress", {
         ...(StorageService.get<MetaData>(STORAGE_KEYS.meta) ?? {}),
       },
       undoStack: StorageService.get<UndoEntry[]>(STORAGE_KEYS.undo) ?? [],
-      survivors: [...SURVIVORS],
-      killers: [...KILLERS],
+      survivors: [...SEED_SURVIVORS],
+      killers: [...SEED_KILLERS],
       tab: (ui.tab as TabId) ?? "survivor",
       page: (ui.page as PageId) ?? "tracker",
       filter: (ui.filter as FilterId) ?? "all",
@@ -183,6 +188,36 @@ export const useProgressStore = defineStore("progress", {
   },
 
   actions: {
+    /**
+     * Fetches the live character roster from the DBD wiki (with 24 h cache).
+     * The store is pre-populated with seed data synchronously at init time, so
+     * the app is fully usable before this resolves. When it does, Vue's
+     * reactivity propagates any changes (new characters, updated perks) to all
+     * consumers automatically.
+     *
+     * Called once on app mount. Safe to call multiple times — the service
+     * returns cached data immediately if the TTL hasn't expired.
+     */
+    async loadRoster(): Promise<void> {
+      const [survivors, killers] = await Promise.all([
+        RosterService.load("survivor", SEED_SURVIVORS),
+        RosterService.load("killer", SEED_KILLERS),
+      ]);
+      this.survivors = survivors;
+      this.killers = killers;
+
+      // Portrait URLs for any new characters won't be in the existing cache
+      const allImgs = [...survivors, ...killers]
+        .map((c) => c.img)
+        .filter(Boolean);
+      WikiApi.prefetchAll(allImgs);
+    },
+
+    /** Force-refresh roster from wiki on next load (e.g. manual refresh button). */
+    invalidateRoster(): void {
+      RosterService.invalidate();
+    },
+
     getProgress(id: string): CharacterProgress {
       return resolveProgress(this.progress, id);
     },

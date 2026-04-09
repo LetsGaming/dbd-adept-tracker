@@ -5,8 +5,7 @@ import type {
   AppSettings,
 } from "@/types";
 
-export { SURVIVORS } from "./survivors";
-export { KILLERS } from "./killers";
+export { SEED_SURVIVORS, SEED_KILLERS } from "./seed";
 
 export const DEFAULT_PROGRESS: CharacterProgress = {
   done: false,

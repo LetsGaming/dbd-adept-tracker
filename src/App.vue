@@ -370,7 +370,7 @@
 import { defineComponent } from "vue";
 import { IonApp } from "@ionic/vue";
 import { useProgressStore, useSettingsStore, useSteamStore } from "@/stores";
-import { StorageService, WikiApi } from "@/services";
+import { StorageService } from "@/services";
 import { showToast } from "@/composables";
 import type { TabId, PageId, ThemeId } from "@/types";
 import SteamWidget from "@/components/steam/SteamWidget.vue";
@@ -479,9 +479,9 @@ export default defineComponent({
     this.settings.initTheme();
     StorageService.cachePurge();
 
-    // Prefetch all portraits in batches
-    const allImgs = this.store.allCharacters.map((c) => c.img).filter(Boolean);
-    WikiApi.prefetchAll(allImgs);
+    // Fetch live roster from wiki (falls back to seed if offline).
+    // Runs in the background — app is already functional with seed data.
+    this.store.loadRoster().catch((e) => console.warn("loadRoster failed:", e));
 
     // Handle share link
     const hash = location.hash;
