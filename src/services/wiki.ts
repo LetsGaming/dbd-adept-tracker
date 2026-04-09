@@ -1,6 +1,6 @@
 import { StorageService, TTL } from "./storage";
 
-const BASE = "https://deadbydaylight.fandom.com/api.php";
+const BASE = "https://deadbydaylight.wiki.gg/api.php";
 
 // In-memory singleton — survives tab switches, only one instance ever
 let memCache: Map<string, string | null> | null = null;
@@ -25,7 +25,7 @@ async function query(
 function loadCache(): Map<string, string | null> {
   if (memCache) return memCache;
   const stored = StorageService.cacheFresh<Record<string, string | null>>(
-    "portraits_v2",
+    "portraits_v3",
     TTL.PORTRAIT,
   );
   memCache = stored ? new Map(Object.entries(stored)) : new Map();
