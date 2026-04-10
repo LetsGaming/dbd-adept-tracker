@@ -14,7 +14,7 @@
     <!-- Header row -->
     <div
       class="flex items-center gap-3.5 px-4 py-3.5 cursor-pointer select-none"
-      @click="$emit('toggle', character.id)"
+      @click="emit('toggle', character.id)"
     >
       <Portrait
         :img-file="character.img"
@@ -59,37 +59,38 @@
       :progress="progress"
       :is-killer="isKiller"
       :read-only="readOnly"
-      @toggle-done="$emit('toggle-done', character.id)"
-      @add-try="(d: number) => $emit('add-try', character.id, d)"
-      @open-perk="(n: string) => $emit('open-perk', n)"
-      @toggle-priority="$emit('toggle-priority', character.id)"
-      @update-note="(n: string) => $emit('update-note', character.id, n)"
+      @toggle-done="emit('toggle-done', character.id)"
+      @add-try="(d: number) => emit('add-try', character.id, d)"
+      @open-perk="(n: string) => emit('open-perk', n)"
+      @toggle-priority="emit('toggle-priority', character.id)"
+      @update-note="(n: string) => emit('update-note', character.id, n)"
     />
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, type PropType } from 'vue';
-import { mapState } from 'pinia';
+<script setup lang="ts">
+import { computed } from 'vue';
 import type { Character } from '@/types';
 import { useProgressStore } from '@/stores';
 import Portrait from '@/components/shared/Portrait.vue';
 import ExpandedPanel from '@/components/character/ExpandedPanel.vue';
 
-export default defineComponent({
-  name: 'CharacterRow',
-  components: { Portrait, ExpandedPanel },
-  props: {
-    character: { type: Object as PropType<Character>, required: true },
-    isActive: { type: Boolean, default: false },
-    isKiller: { type: Boolean, default: false },
-    readOnly: { type: Boolean, default: false },
-  },
-  emits: ['toggle', 'toggle-done', 'add-try', 'open-perk', 'toggle-priority', 'update-note'],
-  computed: {
-    progress() {
-      return useProgressStore().getProgress(this.character.id);
-    },
-  },
-});
+const props = defineProps<{
+  character: Character;
+  isActive: boolean;
+  isKiller: boolean;
+  readOnly: boolean;
+}>();
+
+const emit = defineEmits<{
+  toggle: [id: string];
+  'toggle-done': [id: string];
+  'add-try': [id: string, delta: number];
+  'open-perk': [name: string];
+  'toggle-priority': [id: string];
+  'update-note': [id: string, note: string];
+}>();
+
+const store = useProgressStore();
+const progress = computed(() => store.getProgress(props.character.id));
 </script>

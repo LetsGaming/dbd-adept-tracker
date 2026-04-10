@@ -10,102 +10,109 @@
       background: 'var(--color-bg-elevated)',
     }"
   >
-    <span v-if="!loaded" class="text-2xl">{{ isKiller ? "💀" : "🧑" }}</span>
+    <span v-if="!loaded" class="text-2xl">{{ isKiller ? '💀' : '🧑' }}</span>
     <img
       v-if="url"
       :src="url"
       alt=""
       class="absolute inset-0 w-full h-full object-cover object-top"
       :style="{ opacity: loaded ? 1 : 0, transition: 'opacity 0.2s' }"
-      @load="loaded = true"
+      @load="onLoad"
       @error="onError"
     />
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from "vue";
+<script setup lang="ts">
+import { ref, watch, onMounted } from 'vue';
 
-const WIKI_CDN = "https://deadbydaylight.wiki.gg/images/";
+const WIKI_CDN = 'https://deadbydaylight.wiki.gg/images/';
 
 const SIZE_MAP = {
-  sm: { w: "40px", h: "40px" },
-  md: { w: "58px", h: "58px" },
-  lg: { w: "50px", h: "50px" },
+  sm: { w: '40px', h: '40px' },
+  md: { w: '58px', h: '58px' },
+  lg: { w: '50px', h: '50px' },
 } as const;
 
 /**
- * Builds the fallback portrait URL using the legacy charSelect naming convention.
+ * Module-level cache of imgFile → the URL that successfully loaded.
+ * Shared across all Portrait instances so switching tabs does not re-fetch
+ * images that were already resolved in a previous render.
+ */
+const resolvedCache = new Map<string, string>();
+
+const props = withDefaults(
+  defineProps<{
+    imgFile?: string;
+    done?: boolean;
+    isKiller?: boolean;
+    size?: 'sm' | 'md' | 'lg';
+  }>(),
+  { imgFile: '', done: false, isKiller: false, size: 'md' },
+);
+
+const sizeMap = SIZE_MAP;
+const url = ref<string | null>(null);
+const fallbackUrl = ref<string | null>(null);
+const loaded = ref(false);
+
+/**
+ * Builds the legacy charSelect fallback URL.
  * e.g. K25_TheCenobite_Portrait.png → K25_charSelect_portrait.png
- *
- * This format is confirmed present on wiki.gg for the older characters.
- * It serves as a safety net when the new _Portrait.png file hasn't been
- * uploaded to wiki.gg yet.
+ * Confirmed present on wiki.gg for older characters when the new format 404s.
  */
 function charSelectFallback(imgFile: string): string | null {
   const prefix = imgFile.match(/^([KS]\d{2,3})/)?.[1];
   return prefix ? `${WIKI_CDN}${prefix}_charSelect_portrait.png` : null;
 }
 
-export default defineComponent({
-  name: "Portrait",
-  props: {
-    imgFile: { type: String, default: "" },
-    done: { type: Boolean, default: false },
-    isKiller: { type: Boolean, default: false },
-    size: { type: String as () => "sm" | "md" | "lg", default: "md" },
-  },
-  data() {
-    return {
-      url: null as string | null,
-      fallbackUrl: null as string | null,
-      loaded: false,
-      sizeMap: SIZE_MAP,
-    };
-  },
-  watch: {
-    imgFile(): void {
-      this.loaded = false;
-      this.resolve();
-    },
-  },
-  mounted(): void {
-    this.resolve();
-  },
-  methods: {
-    resolve(): void {
-      if (!this.imgFile) {
-        this.url = null;
-        this.fallbackUrl = null;
-        return;
-      }
+function resolve(): void {
+  if (!props.imgFile) {
+    url.value = null;
+    fallbackUrl.value = null;
+    loaded.value = false;
+    return;
+  }
 
-      if (this.imgFile.startsWith("http")) {
-        // Already a full URL — use directly, no fallback needed
-        this.url = this.imgFile;
-        this.fallbackUrl = null;
-        return;
-      }
+  // Already resolved by a previous Portrait instance — skip the network round-trip.
+  const cached = resolvedCache.get(props.imgFile);
+  if (cached) {
+    url.value = cached;
+    loaded.value = true;
+    return;
+  }
 
-      // Primary: new _Portrait.png format
-      // e.g. K29_TheMastermind_Portrait.png
-      this.url = `${WIKI_CDN}${this.imgFile}`;
-      // Fallback: old charSelect format that wiki.gg still hosts for older characters
-      // e.g. K29_charSelect_portrait.png
-      this.fallbackUrl = charSelectFallback(this.imgFile);
-    },
+  loaded.value = false;
 
-    onError(): void {
-      if (this.fallbackUrl) {
-        // New-format URL failed (ORB / 404) — try the legacy charSelect URL
-        this.url = this.fallbackUrl;
-        this.fallbackUrl = null; // only one fallback attempt
-      } else {
-        // Both URLs exhausted — stay hidden, emoji placeholder remains visible
-        this.url = null;
-        this.loaded = false;
-      }
-    },
-  },
-});
+  if (props.imgFile.startsWith('http')) {
+    url.value = props.imgFile;
+    fallbackUrl.value = null;
+    return;
+  }
+
+  url.value = `${WIKI_CDN}${props.imgFile}`;
+  fallbackUrl.value = charSelectFallback(props.imgFile);
+}
+
+function onLoad(): void {
+  if (props.imgFile && url.value) {
+    resolvedCache.set(props.imgFile, url.value);
+  }
+  loaded.value = true;
+}
+
+function onError(): void {
+  if (fallbackUrl.value) {
+    // Primary URL failed — try the legacy charSelect format.
+    url.value = fallbackUrl.value;
+    fallbackUrl.value = null;
+  } else {
+    // Both URLs exhausted — keep emoji placeholder visible.
+    url.value = null;
+    loaded.value = false;
+  }
+}
+
+onMounted(resolve);
+watch(() => props.imgFile, resolve);
 </script>

@@ -16,7 +16,7 @@
         :class="progress.priority
           ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/25 text-[var(--color-accent)]'
           : 'bg-[var(--color-bg-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'"
-        @click="$emit('toggle-priority')"
+        @click="emit('toggle-priority')"
       >{{ progress.priority ? '⭐' : '☆' }}</button>
     </div>
 
@@ -26,7 +26,7 @@
         v-for="perk in character.perks"
         :key="perk"
         :name="perk"
-        @open="(n: string) => $emit('open-perk', n)"
+        @open="(n: string) => emit('open-perk', n)"
       />
     </div>
 
@@ -38,18 +38,18 @@
     >
       <span class="text-xs text-[var(--color-text-muted)]">⏱</span>
       <span class="font-display text-xl font-black text-[var(--color-accent)] min-w-[80px] text-center tracking-wide">
-        {{ fmtTime(timerElapsed) }}
+        {{ fmtTime(elapsed) }}
       </span>
       <button
         class="rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-all min-h-[36px]"
-        :class="timerRunning
+        :class="running
           ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)] text-[var(--color-accent)]'
           : 'border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]'"
-        @click="timerRunning ? stopTimer() : startTimer()"
-      >{{ timerRunning ? '⏸ Stop' : '▶ Start' }}</button>
+        @click="running ? stop() : start()"
+      >{{ running ? '⏸ Stop' : '▶ Start' }}</button>
       <button
         class="rounded-lg border border-[var(--color-border-subtle)] px-3.5 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] min-h-[36px]"
-        @click="resetTimer()"
+        @click="reset()"
       >↺</button>
     </div>
 
@@ -61,7 +61,7 @@
       >
         <button
           class="w-12 h-[50px] flex items-center justify-center text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-          @click="$emit('add-try', -1)"
+          @click="emit('add-try', -1)"
         >−</button>
         <div
           class="flex-1 text-center font-black text-lg font-display"
@@ -69,7 +69,7 @@
         >{{ progress.tries }}</div>
         <button
           class="w-12 h-[50px] flex items-center justify-center text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-          @click="$emit('add-try', 1)"
+          @click="emit('add-try', 1)"
         >+</button>
       </div>
       <button
@@ -77,7 +77,7 @@
         :class="progress.done
           ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
           : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)]'"
-        @click="$emit('toggle-done')"
+        @click="emit('toggle-done')"
       >{{ progress.done ? '✓ ERLEDIGT' : 'MARKIEREN' }}</button>
     </div>
 
@@ -128,77 +128,55 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, type PropType } from 'vue';
+<script setup lang="ts">
+import { computed, onBeforeUnmount } from 'vue';
 import type { Character, CharacterProgress } from '@/types';
 import { WIN_CONDITIONS } from '@/data';
+import { useTimer } from '@/composables/useTimer';
 import PerkButton from '@/components/shared/PerkButton.vue';
 import SectionLabel from '@/components/shared/SectionLabel.vue';
 
-export default defineComponent({
-  name: 'ExpandedPanel',
-  components: { PerkButton, SectionLabel },
-  props: {
-    character: { type: Object as PropType<Character>, required: true },
-    progress: { type: Object as PropType<CharacterProgress>, required: true },
-    isKiller: { type: Boolean, default: false },
-    readOnly: { type: Boolean, default: false },
-  },
-  emits: ['toggle-done', 'add-try', 'open-perk', 'toggle-priority', 'update-note'],
-  data() {
-    return {
-      timerElapsed: 0,
-      timerRunning: false,
-      _timerInterval: null as ReturnType<typeof setInterval> | null,
-      _timerStartedAt: 0,
-      _noteTimer: null as ReturnType<typeof setTimeout> | null,
-    };
-  },
-  computed: {
-    winCondition(): string {
-      return this.isKiller ? WIN_CONDITIONS.killer : WIN_CONDITIONS.survivor;
-    },
-    recentAttempts() {
-      return this.progress.attempts.slice(-5).reverse();
-    },
-  },
-  beforeUnmount(): void {
-    this.stopTimer();
-    if (this._noteTimer) clearTimeout(this._noteTimer);
-  },
-  methods: {
-    startTimer(): void {
-      if (this.timerRunning) return;
-      this._timerStartedAt = Date.now();
-      this._timerInterval = setInterval(() => {
-        this.timerElapsed = Math.floor((Date.now() - this._timerStartedAt) / 1000);
-      }, 1000);
-      this.timerRunning = true;
-    },
-    stopTimer(): void {
-      if (this._timerInterval) clearInterval(this._timerInterval);
-      this._timerInterval = null;
-      this.timerRunning = false;
-    },
-    resetTimer(): void {
-      this.stopTimer();
-      this.timerElapsed = 0;
-    },
-    fmtTime(s: number): string {
-      const m = Math.floor(s / 60);
-      const sec = s % 60;
-      return `${m}:${String(sec).padStart(2, '0')}`;
-    },
-    formatDate(ts: number): string {
-      const d = new Date(ts);
-      return `${d.toLocaleDateString('de-DE')} ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-    },
-    onNote(e: Event): void {
-      const val = (e.target as HTMLTextAreaElement).value;
-      if (this._noteTimer) clearTimeout(this._noteTimer);
-      // Debounce note saves to avoid flooding the store on every keystroke
-      this._noteTimer = setTimeout(() => this.$emit('update-note', val), 400);
-    },
-  },
+const props = defineProps<{
+  character: Character;
+  progress: CharacterProgress;
+  isKiller: boolean;
+  readOnly: boolean;
+}>();
+
+const emit = defineEmits<{
+  'toggle-done': [];
+  'add-try': [delta: number];
+  'open-perk': [name: string];
+  'toggle-priority': [];
+  'update-note': [note: string];
+}>();
+
+const { elapsed, running, start, stop, reset, fmtTime } = useTimer(props.character.id);
+
+const winCondition = computed(() =>
+  props.isKiller ? WIN_CONDITIONS.killer : WIN_CONDITIONS.survivor,
+);
+
+const recentAttempts = computed(() =>
+  props.progress.attempts.slice(-5).reverse(),
+);
+
+let noteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onNote(e: Event): void {
+  const val = (e.target as HTMLTextAreaElement).value;
+  if (noteTimer) clearTimeout(noteTimer);
+  // Debounce note saves to avoid flooding the store on every keystroke.
+  noteTimer = setTimeout(() => emit('update-note', val), 400);
+}
+
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.toLocaleDateString('de-DE')} ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+onBeforeUnmount(() => {
+  stop();
+  if (noteTimer) clearTimeout(noteTimer);
 });
 </script>

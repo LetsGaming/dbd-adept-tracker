@@ -163,16 +163,12 @@
             <!-- Export (desktop only) -->
             <div v-if="!store.readOnly" class="hidden lg:block mb-3.5">
               <SectionLabel class="mb-2">Export / Tools</SectionLabel>
-              <div class="grid grid-cols-2 gap-1.5">
-                <button class="export-btn" @click="exportJSON">📦 JSON</button>
-                <button class="export-btn" @click="importJSON">
-                  📂 Import
-                </button>
-                <button class="export-btn" @click="exportStatCard">
-                  📊 Stat Card
-                </button>
-                <button class="export-btn" @click="shareLink">🔗 Teilen</button>
-              </div>
+              <ExportActions
+                @export-json="exportJSON"
+                @import-json="importJSON"
+                @export-stat-card="exportStatCard"
+                @share-link="shareLink"
+              />
             </div>
 
             <!-- Steam (desktop only) -->
@@ -334,32 +330,13 @@
         <!-- Export (mobile) -->
         <div class="lg:hidden mb-8">
           <SectionLabel class="mb-4">Export / Tools</SectionLabel>
-          <div class="grid grid-cols-2 gap-2">
-            <button
-              class="export-btn"
-              style="padding: 14px 8px; font-size: 14px"
-              @click="exportJSON"
-            >
-              📦 JSON
-            </button>
-            <button
-              class="export-btn"
-              style="padding: 14px 8px; font-size: 14px"
-              @click="importJSON"
-            >
-              📂 Import
-            </button>
-            <button class="export-btn" @click="exportStatCard">
-              📊 Stat Card
-            </button>
-            <button
-              class="export-btn"
-              style="padding: 14px 8px; font-size: 14px"
-              @click="shareLink"
-            >
-              🔗 Teilen
-            </button>
-          </div>
+          <ExportActions
+            :compact="true"
+            @export-json="exportJSON"
+            @import-json="importJSON"
+            @export-stat-card="exportStatCard"
+            @share-link="shareLink"
+          />
         </div>
       </div>
     </AppModal>
@@ -376,11 +353,12 @@ import type { TabId, PageId, ThemeId } from "@/types";
 import SteamWidget from "@/components/steam/SteamWidget.vue";
 import AppModal from "@/components/shared/AppModal.vue";
 import SectionLabel from "@/components/shared/SectionLabel.vue";
+import ExportActions from "@/components/shared/ExportActions.vue";
 import router from "@/router";
 
 export default defineComponent({
   name: "App",
-  components: { IonApp, SteamWidget, AppModal, SectionLabel },
+  components: { IonApp, SteamWidget, AppModal, SectionLabel, ExportActions },
 
   data() {
     return {

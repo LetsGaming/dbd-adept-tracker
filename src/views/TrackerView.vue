@@ -7,11 +7,9 @@
       @update:filter="store.setFilter($event)"
     />
 
-    <div
-      class="text-center text-xs tracking-wider text-[var(--color-text-muted)] uppercase mb-3.5"
-    >
+    <div class="text-center text-xs tracking-wider text-[var(--color-text-muted)] uppercase mb-3.5">
       {{ store.filteredCharacters.length }}
-      Charakter{{ store.filteredCharacters.length !== 1 ? "e" : "" }}
+      Charakter{{ store.filteredCharacters.length !== 1 ? 'e' : '' }}
     </div>
 
     <CharacterRow
@@ -40,37 +38,25 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from "vue";
-import { useProgressStore } from "@/stores";
-import CharacterRow from "@/components/character/CharacterRow.vue";
-import PerkModal from "@/components/modals/PerkModal.vue";
-import SearchBar from "@/components/shared/SearchBar.vue";
+<script setup lang="ts">
+import { ref } from 'vue';
+import { useProgressStore } from '@/stores';
+import CharacterRow from '@/components/character/CharacterRow.vue';
+import PerkModal from '@/components/modals/PerkModal.vue';
+import SearchBar from '@/components/shared/SearchBar.vue';
 
-export default defineComponent({
-  name: "TrackerView",
-  components: { CharacterRow, PerkModal, SearchBar },
-  data() {
-    return {
-      openPerkName: "",
-    };
-  },
-  computed: {
-    store() {
-      return useProgressStore();
-    },
-  },
-  methods: {
-    onToggle(id: string): void {
-      this.store.activeId = this.store.activeId === id ? null : id;
-      if (this.store.activeId) {
-        this.$nextTick(() => {
-          document
-            .querySelector(`[data-char-id="${id}"]`)
-            ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        });
-      }
-    },
-  },
-});
+const store = useProgressStore();
+const openPerkName = ref('');
+
+function onToggle(id: string): void {
+  store.activeId = store.activeId === id ? null : id;
+  if (store.activeId) {
+    // Wait for the expanded panel to render before scrolling.
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-char-id="${id}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+}
 </script>

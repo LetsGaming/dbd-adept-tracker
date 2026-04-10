@@ -3,17 +3,14 @@
     <SectionLabel class="mb-3">Tier List — Drag & Drop</SectionLabel>
 
     <div
-      v-for="tier in tiers"
+      v-for="tier in TIER_LABELS"
       :key="tier"
       class="rounded-xl border border-[var(--color-border-subtle)] overflow-hidden mb-3"
     >
       <div class="flex">
         <div
           class="flex items-center justify-center min-w-[50px] px-4 py-3 font-display text-base font-black"
-          :style="{
-            background: tierColors[tier] + '22',
-            color: tierColors[tier],
-          }"
+          :style="{ background: TIER_COLORS[tier] + '22', color: TIER_COLORS[tier] }"
         >
           {{ tier }}
         </div>
@@ -30,22 +27,13 @@
             :title="charName(id)"
             @dragstart="onDragStart($event, id)"
           >
-            <Portrait
-              :img-file="charImg(id)"
-              :is-killer="store.isKiller(id)"
-              size="lg"
-            />
+            <Portrait :img-file="charImg(id)" :is-killer="store.isKiller(id)" size="lg" />
             <div
               v-if="store.getProgress(id).done"
               class="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-[var(--color-accent)] text-[7px] flex items-center justify-center text-black font-black"
-            >
-              ✓
-            </div>
+            >✓</div>
           </div>
-          <span
-            v-if="!tierMap[tier]?.length"
-            class="text-[var(--color-text-faint)] text-xs"
-          >
+          <span v-if="!tierMap[tier]?.length" class="text-[var(--color-text-faint)] text-xs">
             Ziehe Charaktere hierher
           </span>
         </div>
@@ -53,12 +41,8 @@
     </div>
 
     <!-- Unranked -->
-    <div
-      class="rounded-xl border border-dashed border-[var(--color-border-medium)] bg-[var(--color-bg-elevated)] p-3.5 mt-3"
-    >
-      <SectionLabel class="mb-2.5"
-        >Nicht eingestuft ({{ unranked.length }})</SectionLabel
-      >
+    <div class="rounded-xl border border-dashed border-[var(--color-border-medium)] bg-[var(--color-bg-elevated)] p-3.5 mt-3">
+      <SectionLabel class="mb-2.5">Nicht eingestuft ({{ unranked.length }})</SectionLabel>
       <div
         class="flex flex-wrap gap-1.5 min-h-[40px]"
         @dragover.prevent
@@ -72,92 +56,79 @@
           :title="ch.name"
           @dragstart="onDragStart($event, ch.id)"
         >
-          <Portrait
-            :img-file="ch.img"
-            :is-killer="store.isKiller(ch.id)"
-            size="lg"
-          />
+          <Portrait :img-file="ch.img" :is-killer="store.isKiller(ch.id)" size="lg" />
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from "vue";
-import { useProgressStore } from "@/stores";
-import { StorageService } from "@/services";
-import { TIER_LABELS, TIER_COLORS } from "@/data";
-import type { TierLabel, TierMap } from "@/types";
-import Portrait from "@/components/shared/Portrait.vue";
-import SectionLabel from "@/components/shared/SectionLabel.vue";
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import { useProgressStore } from '@/stores';
+import { StorageService } from '@/services';
+import { TIER_LABELS, TIER_COLORS } from '@/data';
+import type { TierLabel, TierMap } from '@/types';
+import Portrait from '@/components/shared/Portrait.vue';
+import SectionLabel from '@/components/shared/SectionLabel.vue';
 
-const TIER_KEY = "dbd_tierlist";
+const TIER_KEY = 'dbd_tierlist';
 
-export default defineComponent({
-  name: "TierListView",
-  components: { Portrait, SectionLabel },
-  data() {
-    return {
-      tiers: TIER_LABELS,
-      tierColors: TIER_COLORS,
-      tierData: StorageService.get<TierMap>(TIER_KEY) ?? ({} as TierMap),
-    };
-  },
-  computed: {
-    store() {
-      return useProgressStore();
-    },
-    visibleChars() {
-      if (this.store.tab === "survivor") return [...this.store.survivors];
-      if (this.store.tab === "killer") return [...this.store.killers];
-      return this.store.allCharacters;
-    },
-    visibleIds(): Set<string> {
-      return new Set(this.visibleChars.map((c) => c.id));
-    },
-    tierMap(): Record<string, string[]> {
-      const m: Record<string, string[]> = {};
-      for (const t of this.tiers) m[t] = [];
-      for (const [id, t] of Object.entries(this.tierData)) {
-        if (m[t] && this.visibleIds.has(id)) m[t].push(id);
-      }
-      return m;
-    },
-    ranked(): Set<string> {
-      const s = new Set<string>();
-      for (const [id, t] of Object.entries(this.tierData)) {
-        if (this.visibleIds.has(id) && t) s.add(id);
-      }
-      return s;
-    },
-    unranked() {
-      return this.visibleChars.filter((c) => !this.ranked.has(c.id));
-    },
-  },
-  methods: {
-    charName(id: string): string {
-      return this.store.allCharacters.find((c) => c.id === id)?.name ?? id;
-    },
-    charImg(id: string): string {
-      return this.store.allCharacters.find((c) => c.id === id)?.img ?? "";
-    },
-    onDragStart(e: DragEvent, id: string): void {
-      e.dataTransfer?.setData("text/plain", id);
-    },
-    onDrop(e: DragEvent, tier: string): void {
-      const id = e.dataTransfer?.getData("text/plain");
-      if (!id) return;
-      // Reassign entire object to trigger Vue reactivity
-      const updated = { ...this.tierData };
-      if (tier) {
-        updated[id] = tier as TierLabel;
-      } else {
-        delete updated[id];
-      }
-      this.tierData = updated;
-      StorageService.set(TIER_KEY, this.tierData);
-    },
-  },
+const store = useProgressStore();
+const tierData = ref<TierMap>(StorageService.get<TierMap>(TIER_KEY) ?? ({} as TierMap));
+
+const visibleChars = computed(() => {
+  if (store.tab === 'survivor') return [...store.survivors];
+  if (store.tab === 'killer') return [...store.killers];
+  return store.allCharacters;
 });
+
+const visibleIds = computed(() => new Set(visibleChars.value.map((c) => c.id)));
+
+const tierMap = computed<Record<string, string[]>>(() => {
+  const m: Record<string, string[]> = {};
+  for (const t of TIER_LABELS) m[t] = [];
+  for (const [id, t] of Object.entries(tierData.value)) {
+    if (m[t] && visibleIds.value.has(id)) m[t].push(id);
+  }
+  return m;
+});
+
+const ranked = computed<Set<string>>(() => {
+  const s = new Set<string>();
+  for (const [id, t] of Object.entries(tierData.value)) {
+    if (visibleIds.value.has(id) && t) s.add(id);
+  }
+  return s;
+});
+
+const unranked = computed(() =>
+  visibleChars.value.filter((c) => !ranked.value.has(c.id)),
+);
+
+function charName(id: string): string {
+  return store.allCharacters.find((c) => c.id === id)?.name ?? id;
+}
+
+function charImg(id: string): string {
+  return store.allCharacters.find((c) => c.id === id)?.img ?? '';
+}
+
+function onDragStart(e: DragEvent, id: string): void {
+  e.dataTransfer?.setData('text/plain', id);
+}
+
+function onDrop(e: DragEvent, tier: string): void {
+  const id = e.dataTransfer?.getData('text/plain');
+  if (!id) return;
+  // Reassign entire object to trigger Vue reactivity.
+  const updated = { ...tierData.value };
+  if (tier) {
+    updated[id] = tier as TierLabel;
+  } else {
+    delete updated[id];
+  }
+  tierData.value = updated;
+  StorageService.set(TIER_KEY, tierData.value);
+}
 </script>
