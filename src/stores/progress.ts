@@ -132,7 +132,8 @@ export const useProgressStore = defineStore("progress", {
       if (this.filter === "done") {
         list = list.filter((c) => resolveProgress(this.progress, c.id).done);
       } else if (this.filter === "todo") {
-        list = list.filter((c) => !resolveProgress(this.progress, c.id).done);
+        const steam = useSteamStore();
+        list = list.filter((c) => !resolveProgress(this.progress, c.id).done && steam.hasAdept(c.name));
       }
 
       return list;
