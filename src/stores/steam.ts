@@ -41,13 +41,23 @@ export const useSteamStore = defineStore("steam", {
      * Check if a character has an obtainable adept achievement.
      * Returns false if schema has been fetched and no matching adept exists.
      * Returns true if schema hasn't been fetched yet (optimistic default).
+     *
+     * Handles naming quirks like:
+     *   "Feng Min" ↔ "Adept Min"
+     *   "Detective David Tapp" ↔ "Adept Tapp"
+     *   "The Trapper" ↔ "Adept Trapper"
      */
     hasAdept(): (characterName: string) => boolean {
       return (characterName: string) => {
         if (!this.availableAdepts.length) return true; // no data yet → assume yes
         const search = characterName.toLowerCase().replace(/^the\s+/, "");
+        const words = search.split(/\s+/);
         return this.availableAdepts.some(
-          (a) => a === search || search.startsWith(a + " ") || a.startsWith(search + " "),
+          (a) =>
+            a === search ||
+            words.includes(a) ||
+            search.startsWith(a + " ") ||
+            search.endsWith(" " + a),
         );
       };
     },
