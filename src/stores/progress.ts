@@ -19,6 +19,7 @@ import {
 } from "@/data";
 import { DLC_APPID_TO_ROLE, FREE_ROLES } from "@/data/dlc-map";
 import { StorageService, RosterService } from "@/services";
+import { useSteamStore } from "./steam";
 
 const STORAGE_KEYS = {
   progress: "dbd_progress",
@@ -138,11 +139,13 @@ export const useProgressStore = defineStore("progress", {
     },
 
     survivorsDone(): number {
-      return this.survivors.filter((c) => this.progress[c.id]?.done).length;
+      const steam = useSteamStore();
+      return this.survivors.filter((c) => this.progress[c.id]?.done && steam.hasAdept(c.name)).length;
     },
 
     killersDone(): number {
-      return this.killers.filter((c) => this.progress[c.id]?.done).length;
+      const steam = useSteamStore();
+      return this.killers.filter((c) => this.progress[c.id]?.done && steam.hasAdept(c.name)).length;
     },
 
     totalDone(): number {
@@ -150,7 +153,8 @@ export const useProgressStore = defineStore("progress", {
     },
 
     totalCount(): number {
-      return this.survivors.length + this.killers.length;
+      const steam = useSteamStore();
+      return this.allCharacters.filter((c) => steam.hasAdept(c.name)).length;
     },
 
     totalPercent(): number {
@@ -167,8 +171,16 @@ export const useProgressStore = defineStore("progress", {
       return (id: string) => this.killers.some((k) => k.id === id);
     },
 
+    /** Check if a character's adept is retired (no achievement in Steam schema). */
+    isRetired(): (name: string) => boolean {
+      const steam = useSteamStore();
+      return (name: string) => !steam.hasAdept(name);
+    },
+
     estimatedCompletion(): string {
-      const doneWithTs = this.allCharacters
+      const steam = useSteamStore();
+      const eligible = this.allCharacters.filter((c) => steam.hasAdept(c.name));
+      const doneWithTs = eligible
         .filter((c) => this.progress[c.id]?.done && this.progress[c.id]?.doneAt)
         .map((c) => this.progress[c.id]!.doneAt!)
         .sort();
@@ -177,7 +189,7 @@ export const useProgressStore = defineStore("progress", {
 
       const span = doneWithTs[doneWithTs.length - 1] - doneWithTs[0];
       const rate = doneWithTs.length / (span / (24 * 3600_000));
-      const rem = this.allCharacters.length - doneWithTs.length;
+      const rem = eligible.length - doneWithTs.length;
 
       if (rate <= 0 || rem <= 0) return rem <= 0 ? "Fertig! 🎉" : "—";
 

@@ -3,6 +3,7 @@
     :data-char-id="character.id"
     class="rounded-xl border mb-2.5 overflow-hidden transition-all"
     :class="[
+      retired ? 'opacity-50' : '',
       progress.done
         ? 'bg-[var(--color-done-bg)] border-[var(--color-accent)]/25'
         : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]',
@@ -50,6 +51,11 @@
           v-if="progress.done"
           class="rounded-md px-2 py-0.5 text-[10px] font-black tracking-wide text-black bg-[var(--color-accent)]"
         >✓ DONE</span>
+        <span
+          v-if="retired"
+          class="rounded-md px-2 py-0.5 text-[10px] font-black tracking-wide text-white/80 bg-red-900/80 border border-red-500/30"
+          title="Adept-Achievement wurde entfernt — nicht mehr erzielbar"
+        >RETIRED</span>
         <span
           v-if="character.isNew"
           class="rounded-md px-2 py-0.5 text-[10px] font-black text-black bg-orange-400"
@@ -104,4 +110,5 @@ const emit = defineEmits<{
 
 const store = useProgressStore();
 const progress = computed(() => store.getProgress(props.character.id));
+const retired = computed(() => store.isRetired(props.character.name));
 </script>

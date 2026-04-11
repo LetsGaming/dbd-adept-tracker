@@ -542,7 +542,7 @@ export default defineComponent({
         }
 
         if (changed.length) this.store.markDoneFromSteam(changed);
-        this.steam.setPhase("done", `✅ ${changed.length} New Adepts`);
+        this.steam.setPhase("done", `✅ ${changed.length} Adepts`);
       } catch (e) {
         this.steam.setPhase("error", `✗ ${(e as Error).message}`);
       }

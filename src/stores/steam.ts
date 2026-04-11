@@ -1,12 +1,13 @@
 import { defineStore } from "pinia";
 import type { SyncPhase, SteamCreds } from "@/types";
 import { StorageService } from "@/services/storage";
-import { DLC_APPID_TO_ROLE, ALL_DLC_APPIDS, FREE_ROLES } from "@/data/dlc-map";
 
 interface SteamState {
   phase: SyncPhase;
   message: string;
   creds: SteamCreds;
+  /** Character names that have an Adept achievement in the schema (lowercased, without "The "). */
+  availableAdepts: string[];
 }
 
 interface SteamAchievement {
@@ -18,6 +19,7 @@ interface SteamAchievement {
 }
 
 const KEYS = { key: "dbd_steam_key", id: "dbd_steam_id" } as const;
+const ADEPT_CACHE_KEY = "dbd_available_adepts";
 
 export const useSteamStore = defineStore("steam", {
   state: (): SteamState => ({
@@ -27,11 +29,27 @@ export const useSteamStore = defineStore("steam", {
       key: StorageService.getString(KEYS.key) ?? "",
       steamId: StorageService.getString(KEYS.id) ?? "",
     },
+    availableAdepts: StorageService.get<string[]>(ADEPT_CACHE_KEY) ?? [],
   }),
 
   getters: {
     hasCreds(): boolean {
       return Boolean(this.creds.key && this.creds.steamId);
+    },
+
+    /**
+     * Check if a character has an obtainable adept achievement.
+     * Returns false if schema has been fetched and no matching adept exists.
+     * Returns true if schema hasn't been fetched yet (optimistic default).
+     */
+    hasAdept(): (characterName: string) => boolean {
+      return (characterName: string) => {
+        if (!this.availableAdepts.length) return true; // no data yet → assume yes
+        const search = characterName.toLowerCase().replace(/^the\s+/, "");
+        return this.availableAdepts.some(
+          (a) => a === search || search.startsWith(a + " ") || a.startsWith(search + " "),
+        );
+      };
     },
   },
 
@@ -88,6 +106,16 @@ export const useSteamStore = defineStore("steam", {
           ?.filter((a) => /^Adept\s+/i.test(a.displayName ?? ""))
           .map((a) => [a.name, a.displayName]) ?? [],
       );
+
+      // Extract available adept character names for retired-detection
+      const adeptNames = [...adeptSchemaMap.values()]
+        .map((d) => (d ?? "").replace(/^Adept\s+/i, "").trim().toLowerCase())
+        .filter(Boolean);
+
+      if (adeptNames.length) {
+        this.availableAdepts = adeptNames;
+        StorageService.set(ADEPT_CACHE_KEY, adeptNames);
+      }
 
       return unlocked
         .filter((a) => adeptSchemaMap.has(a.apiname))
@@ -186,42 +214,6 @@ export const useSteamStore = defineStore("steam", {
           msg: "⚠ Vanity-URL — steamid.io nutzen",
         };
       return { valid: false, id: "", msg: "Steam ID64 oder Profil-URL" };
-    },
-
-    /**
-     * Fetches the user's owned games/DLCs via IPlayerService/GetOwnedGames.
-     * Returns the set of chapter role strings the user owns.
-     */
-    async fetchOwnedRoles(): Promise<Set<string>> {
-      const { key, steamId } = this.creds;
-      const url =
-        `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/` +
-        `?key=${encodeURIComponent(key)}` +
-        `&steamid=${encodeURIComponent(steamId)}` +
-        `&include_played_free_games=true` +
-        `&include_free_sub=true` +
-        `&format=json`;
-
-      const d = (await this.proxyFetch(url)) as {
-        response?: { games?: Array<{ appid: number }> };
-      };
-
-      const ownedAppIds = new Set(
-        (d.response?.games ?? []).map((g) => g.appid),
-      );
-
-      // Always include free chapter roles
-      const roles = new Set<string>(FREE_ROLES);
-
-      // Check which DLC app IDs the user owns
-      for (const appId of ALL_DLC_APPIDS) {
-        if (ownedAppIds.has(appId)) {
-          const role = DLC_APPID_TO_ROLE[appId];
-          if (role) roles.add(role);
-        }
-      }
-
-      return roles;
     },
   },
 });
