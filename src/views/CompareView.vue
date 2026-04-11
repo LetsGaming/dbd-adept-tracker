@@ -17,9 +17,7 @@
         <button
           class="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] px-4 py-2 text-xs font-semibold min-h-[42px]"
           @click="loadCompare"
-        >
-          Laden
-        </button>
+        >Laden</button>
       </div>
     </div>
 
@@ -34,9 +32,7 @@
       <button
         class="rounded-lg border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] px-4 py-2 text-xs font-semibold mb-3"
         @click="compareData = null"
-      >
-        ✕ Vergleich beenden
-      </button>
+      >✕ Vergleich beenden</button>
 
       <div class="max-h-[60vh] overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] px-3.5 py-2">
         <div
@@ -53,65 +49,85 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, computed } from 'vue';
+<script lang="ts">
+import { defineComponent } from 'vue';
 import { useProgressStore } from '@/stores';
 import { showToast } from '@/composables';
-import type { ProgressMap } from '@/types';
+import type { ProgressMap, SharePayload } from '@/types';
 import { DEFAULT_PROGRESS } from '@/data';
 import StatCard from '@/components/shared/StatCard.vue';
 
-const store = useProgressStore();
-const shareInput = ref('');
-const compareData = ref<ProgressMap | null>(null);
-
-const counts = computed(() => {
-  if (!compareData.value) return { onlyMe: 0, both: 0, onlyThem: 0 };
-  let onlyMe = 0, both = 0, onlyThem = 0;
-  for (const c of store.allCharacters) {
-    const myDone = store.getProgress(c.id).done;
-    const theirDone = compareData.value[c.id]?.done;
-    if (myDone && theirDone) both++;
-    else if (myDone) onlyMe++;
-    else if (theirDone) onlyThem++;
-  }
-  return { onlyMe, both, onlyThem };
-});
-
-const compareRows = computed(() => {
-  if (!compareData.value) return [];
-  return store.allCharacters.map((c) => {
-    const myDone = store.getProgress(c.id).done;
-    const theirDone = compareData.value![c.id]?.done;
-    const color =
-      myDone && theirDone
-        ? 'var(--color-accent)'
-        : myDone
-          ? '#4ade80'
-          : theirDone
-            ? '#fb923c'
-            : 'var(--color-text-faint)';
-    const icon =
-      myDone && theirDone ? '✓✓' : myDone ? '✓ ·' : theirDone ? '· ✓' : '· ·';
-    return { id: c.id, name: c.name, color, icon };
-  });
-});
-
-function loadCompare(): void {
-  if (!shareInput.value) return;
-  try {
-    const raw = shareInput.value.trim();
-    const encoded = raw.includes('#share=') ? raw.split('#share=')[1] : raw;
-    const data = JSON.parse(atob(encoded)) as { p: Record<string, { d: number; t: number }> };
-    if (!data.p) throw new Error('Ungültige Daten');
-    const progress: ProgressMap = {};
-    for (const [id, v] of Object.entries(data.p)) {
-      progress[id] = { ...DEFAULT_PROGRESS, done: !!v.d, tries: v.t || 0 };
-    }
-    compareData.value = progress;
-    showToast('✓ Vergleich geladen');
-  } catch {
-    showToast('✗ Ungültiger Link');
-  }
+interface CompareRow {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
 }
+
+export default defineComponent({
+  name: 'CompareView',
+  components: { StatCard },
+
+  data() {
+    return {
+      shareInput: '',
+      compareData: null as ProgressMap | null,
+    };
+  },
+
+  computed: {
+    store() {
+      return useProgressStore();
+    },
+
+    counts(): { onlyMe: number; both: number; onlyThem: number } {
+      if (!this.compareData) return { onlyMe: 0, both: 0, onlyThem: 0 };
+      let onlyMe = 0, both = 0, onlyThem = 0;
+      for (const c of this.store.allCharacters) {
+        const myDone = this.store.getProgress(c.id).done;
+        const theirDone = this.compareData[c.id]?.done;
+        if (myDone && theirDone) both++;
+        else if (myDone) onlyMe++;
+        else if (theirDone) onlyThem++;
+      }
+      return { onlyMe, both, onlyThem };
+    },
+
+    compareRows(): CompareRow[] {
+      if (!this.compareData) return [];
+      return this.store.allCharacters.map((c) => {
+        const myDone = this.store.getProgress(c.id).done;
+        const theirDone = this.compareData![c.id]?.done;
+        const color =
+          myDone && theirDone ? 'var(--color-accent)'
+          : myDone ? '#4ade80'
+          : theirDone ? '#fb923c'
+          : 'var(--color-text-faint)';
+        const icon =
+          myDone && theirDone ? '✓✓' : myDone ? '✓ ·' : theirDone ? '· ✓' : '· ·';
+        return { id: c.id, name: c.name, color, icon };
+      });
+    },
+  },
+
+  methods: {
+    loadCompare(): void {
+      if (!this.shareInput) return;
+      try {
+        const raw = this.shareInput.trim();
+        const encoded = raw.includes('#share=') ? raw.split('#share=')[1] : raw;
+        const data = JSON.parse(atob(encoded)) as SharePayload;
+        if (!data.p) throw new Error('Ungültige Daten');
+        const progress: ProgressMap = {};
+        for (const [id, v] of Object.entries(data.p)) {
+          progress[id] = { ...DEFAULT_PROGRESS, done: !!v.d, tries: v.t || 0 };
+        }
+        this.compareData = progress;
+        showToast('✓ Vergleich geladen');
+      } catch {
+        showToast('✗ Ungültiger Link');
+      }
+    },
+  },
+});
 </script>

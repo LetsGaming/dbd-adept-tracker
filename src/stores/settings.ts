@@ -1,29 +1,32 @@
-import { defineStore } from "pinia";
-import type { AppSettings, HotkeyMap, ThemeId } from "@/types";
-import { DEFAULT_SETTINGS, DEFAULT_HOTKEYS } from "@/data";
-import { StorageService } from "@/services/storage";
+import { defineStore } from 'pinia';
+import type { AppSettings, HotkeyMap } from '@/types';
+import { ThemeId } from '@/types';
+import { DEFAULT_SETTINGS, DEFAULT_HOTKEYS } from '@/data';
+import { StorageService } from '@/services/storage';
+
+const THEME_ORDER: ThemeId[] = [ThemeId.Dark, ThemeId.Light, ThemeId.Oled];
 
 interface SettingsState {
   settings: AppSettings;
   theme: ThemeId;
 }
 
-export const useSettingsStore = defineStore("settings", {
+export const useSettingsStore = defineStore('settings', {
   state: (): SettingsState => ({
     settings: {
       ...DEFAULT_SETTINGS,
-      ...(StorageService.get<AppSettings>("dbd_settings") ?? {}),
+      ...(StorageService.get<AppSettings>('dbd_settings') ?? {}),
       hotkeys: {
         ...DEFAULT_HOTKEYS,
-        ...(StorageService.get<AppSettings>("dbd_settings")?.hotkeys ?? {}),
+        ...(StorageService.get<AppSettings>('dbd_settings')?.hotkeys ?? {}),
       },
     },
-    theme: (StorageService.getString("dbd_theme") as ThemeId) ?? "dark",
+    theme: (StorageService.getString('dbd_theme') as ThemeId) ?? ThemeId.Dark,
   }),
 
   actions: {
     _save(): void {
-      StorageService.set("dbd_settings", this.settings);
+      StorageService.set('dbd_settings', this.settings);
     },
 
     setHotkey(action: keyof HotkeyMap, keys: string[]): void {
@@ -50,14 +53,13 @@ export const useSettingsStore = defineStore("settings", {
 
     setTheme(t: ThemeId): void {
       this.theme = t;
-      StorageService.setString("dbd_theme", t);
-      document.documentElement.setAttribute("data-theme", t);
+      StorageService.setString('dbd_theme', t);
+      document.documentElement.setAttribute('data-theme', t);
     },
 
     cycleTheme(): void {
-      const themes: ThemeId[] = ["dark", "light", "oled"];
-      const idx = themes.indexOf(this.theme);
-      this.setTheme(themes[(idx + 1) % themes.length]);
+      const idx = THEME_ORDER.indexOf(this.theme);
+      this.setTheme(THEME_ORDER[(idx + 1) % THEME_ORDER.length]);
     },
 
     initTheme(): void {
@@ -69,15 +71,15 @@ export const useSettingsStore = defineStore("settings", {
       if (!this.settings.autoTheme) return;
       const now = new Date();
       const mins = now.getHours() * 60 + now.getMinutes();
-      const [lh, lm] = this.settings.autoThemeLight.split(":").map(Number);
-      const [dh, dm] = this.settings.autoThemeDark.split(":").map(Number);
+      const [lh, lm] = this.settings.autoThemeLight.split(':').map(Number);
+      const [dh, dm] = this.settings.autoThemeDark.split(':').map(Number);
       const lightMins = lh * 60 + lm;
       const darkMins = dh * 60 + dm;
       const shouldBeLight =
         lightMins < darkMins
           ? mins >= lightMins && mins < darkMins
           : mins >= lightMins || mins < darkMins;
-      const target: ThemeId = shouldBeLight ? "light" : "dark";
+      const target = shouldBeLight ? ThemeId.Light : ThemeId.Dark;
       if (this.theme !== target) this.setTheme(target);
     },
   },

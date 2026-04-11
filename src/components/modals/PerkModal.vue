@@ -37,14 +37,11 @@ import { defineComponent } from 'vue';
 import type { PerkData } from '@/types';
 import { PerkService } from '@/services';
 import { perkColor } from '@/composables';
+import { escapeHtml } from '@/utils/format';
 import AppModal from '@/components/shared/AppModal.vue';
 
 const TIER_COLORS = ['var(--tier-1, #94a3b8)', 'var(--tier-2, #4ade80)', 'var(--tier-3, #d8b4fe)'];
 const TIER_BG = ['#94a3b818', '#4ade8018', '#d8b4fe18'];
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 export default defineComponent({
   name: 'PerkModal',
@@ -75,14 +72,14 @@ export default defineComponent({
       const re = /\{(\d+)\}/g;
       let m: RegExpExecArray | null;
       while ((m = re.exec(desc)) !== null) {
-        html += escHtml(desc.slice(cur, m.index));
+        html += escapeHtml(desc.slice(cur, m.index));
         const vals = tunables[parseInt(m[1], 10)] ?? [];
         html += vals.map((x, i) =>
-          `<span style="display:inline-flex;align-items:center;border-radius:5px;padding:2px 7px;font-size:12px;font-weight:700;white-space:nowrap;margin:0 2px;border:1px solid ${TIER_COLORS[i]}55;background:${TIER_BG[i]};color:${TIER_COLORS[i]}">${escHtml(x)}</span>`,
+          `<span style="display:inline-flex;align-items:center;border-radius:5px;padding:2px 7px;font-size:12px;font-weight:700;white-space:nowrap;margin:0 2px;border:1px solid ${TIER_COLORS[i]}55;background:${TIER_BG[i]};color:${TIER_COLORS[i]}">${escapeHtml(x)}</span>`,
         ).join('');
         cur = m.index + m[0].length;
       }
-      html += escHtml(desc.slice(cur));
+      html += escapeHtml(desc.slice(cur));
       return html;
     },
   },

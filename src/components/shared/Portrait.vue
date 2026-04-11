@@ -2,8 +2,8 @@
   <div
     class="relative flex items-center justify-center overflow-hidden rounded-lg shrink-0"
     :style="{
-      width: sizeMap[size].w,
-      height: sizeMap[size].h,
+      width: sizeConfig.w,
+      height: sizeConfig.h,
       borderWidth: '2px',
       borderStyle: 'solid',
       borderColor: done ? 'var(--color-accent)' : 'var(--color-border-medium)',
@@ -12,8 +12,8 @@
   >
     <span v-if="!loaded" class="text-2xl">{{ isKiller ? '💀' : '🧑' }}</span>
     <img
-      v-if="url"
-      :src="url"
+      v-if="currentUrl"
+      :src="currentUrl"
       alt=""
       class="absolute inset-0 w-full h-full object-cover object-top"
       :style="{ opacity: loaded ? 1 : 0, transition: 'opacity 0.2s' }"
@@ -23,8 +23,8 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+<script lang="ts">
+import { defineComponent } from 'vue';
 
 const WIKI_CDN = 'https://deadbydaylight.wiki.gg/images/';
 
@@ -36,83 +36,95 @@ const SIZE_MAP = {
 
 /**
  * Module-level cache of imgFile → the URL that successfully loaded.
- * Shared across all Portrait instances so switching tabs does not re-fetch
- * images that were already resolved in a previous render.
+ * Shared across all Portrait instances so switching tabs does not re-fetch.
  */
 const resolvedCache = new Map<string, string>();
 
-const props = withDefaults(
-  defineProps<{
-    imgFile?: string;
-    done?: boolean;
-    isKiller?: boolean;
-    size?: 'sm' | 'md' | 'lg';
-  }>(),
-  { imgFile: '', done: false, isKiller: false, size: 'md' },
-);
+export default defineComponent({
+  name: 'PortraitImage',
+  props: {
+    imgFile: { type: String, default: '' },
+    done: { type: Boolean, default: false },
+    isKiller: { type: Boolean, default: false },
+    size: {
+      type: String as () => 'sm' | 'md' | 'lg',
+      default: 'md',
+    },
+  },
 
-const sizeMap = SIZE_MAP;
-const url = ref<string | null>(null);
-const fallbackUrl = ref<string | null>(null);
-const loaded = ref(false);
+  data() {
+    return {
+      currentUrl: null as string | null,
+      fallbackUrl: null as string | null,
+      loaded: false,
+    };
+  },
 
-/**
- * Builds the legacy charSelect fallback URL.
- * e.g. K25_TheCenobite_Portrait.png → K25_charSelect_portrait.png
- * Confirmed present on wiki.gg for older characters when the new format 404s.
- */
-function charSelectFallback(imgFile: string): string | null {
-  const prefix = imgFile.match(/^([KS]\d{2,3})/)?.[1];
-  return prefix ? `${WIKI_CDN}${prefix}_charSelect_portrait.png` : null;
-}
+  computed: {
+    sizeConfig(): { w: string; h: string } {
+      return SIZE_MAP[this.size];
+    },
+  },
 
-function resolve(): void {
-  if (!props.imgFile) {
-    url.value = null;
-    fallbackUrl.value = null;
-    loaded.value = false;
-    return;
-  }
+  watch: {
+    imgFile() {
+      this.resolve();
+    },
+  },
 
-  // Already resolved by a previous Portrait instance — skip the network round-trip.
-  const cached = resolvedCache.get(props.imgFile);
-  if (cached) {
-    url.value = cached;
-    loaded.value = true;
-    return;
-  }
+  mounted() {
+    this.resolve();
+  },
 
-  loaded.value = false;
+  methods: {
+    charSelectFallback(imgFile: string): string | null {
+      const prefix = imgFile.match(/^([KS]\d{2,3})/)?.[1];
+      return prefix ? `${WIKI_CDN}${prefix}_charSelect_portrait.png` : null;
+    },
 
-  if (props.imgFile.startsWith('http')) {
-    url.value = props.imgFile;
-    fallbackUrl.value = null;
-    return;
-  }
+    resolve(): void {
+      if (!this.imgFile) {
+        this.currentUrl = null;
+        this.fallbackUrl = null;
+        this.loaded = false;
+        return;
+      }
 
-  url.value = `${WIKI_CDN}${props.imgFile}`;
-  fallbackUrl.value = charSelectFallback(props.imgFile);
-}
+      const cached = resolvedCache.get(this.imgFile);
+      if (cached) {
+        this.currentUrl = cached;
+        this.loaded = true;
+        return;
+      }
 
-function onLoad(): void {
-  if (props.imgFile && url.value) {
-    resolvedCache.set(props.imgFile, url.value);
-  }
-  loaded.value = true;
-}
+      this.loaded = false;
 
-function onError(): void {
-  if (fallbackUrl.value) {
-    // Primary URL failed — try the legacy charSelect format.
-    url.value = fallbackUrl.value;
-    fallbackUrl.value = null;
-  } else {
-    // Both URLs exhausted — keep emoji placeholder visible.
-    url.value = null;
-    loaded.value = false;
-  }
-}
+      if (this.imgFile.startsWith('http')) {
+        this.currentUrl = this.imgFile;
+        this.fallbackUrl = null;
+        return;
+      }
 
-onMounted(resolve);
-watch(() => props.imgFile, resolve);
+      this.currentUrl = `${WIKI_CDN}${this.imgFile}`;
+      this.fallbackUrl = this.charSelectFallback(this.imgFile);
+    },
+
+    onLoad(): void {
+      if (this.imgFile && this.currentUrl) {
+        resolvedCache.set(this.imgFile, this.currentUrl);
+      }
+      this.loaded = true;
+    },
+
+    onError(): void {
+      if (this.fallbackUrl) {
+        this.currentUrl = this.fallbackUrl;
+        this.fallbackUrl = null;
+      } else {
+        this.currentUrl = null;
+        this.loaded = false;
+      }
+    },
+  },
+});
 </script>

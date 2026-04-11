@@ -1,6 +1,12 @@
-import { ref } from "vue";
+import { ref } from 'vue';
+import { formatTime } from '@/utils/format';
 
-const globalTimers = new Map<string, { interval: number; startedAt: number }>();
+interface TimerEntry {
+  interval: number;
+  startedAt: number;
+}
+
+const globalTimers = new Map<string, TimerEntry>();
 
 export function useTimer(id: string) {
   const elapsed = ref(0);
@@ -37,11 +43,5 @@ export function useTimer(id: string) {
     elapsed.value = 0;
   }
 
-  function fmtTime(s: number): string {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${String(sec).padStart(2, "0")}`;
-  }
-
-  return { elapsed, running, start, stop, reset, fmtTime };
+  return { elapsed, running, start, stop, reset, fmtTime: formatTime };
 }

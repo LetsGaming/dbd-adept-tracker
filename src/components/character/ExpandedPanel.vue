@@ -18,7 +18,7 @@
             ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/25 text-[var(--color-accent)]'
             : 'bg-[var(--color-bg-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'"
           title="Besitzt"
-          @click="emit('toggle-owned')"
+          @click="$emit('toggle-owned')"
         >{{ progress.owned ? '🎮' : '🚫' }}</button>
         <button
           v-if="!readOnly"
@@ -26,7 +26,7 @@
           :class="progress.priority
             ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/25 text-[var(--color-accent)]'
             : 'bg-[var(--color-bg-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'"
-          @click="emit('toggle-priority')"
+          @click="$emit('toggle-priority')"
         >{{ progress.priority ? '⭐' : '☆' }}</button>
       </div>
     </div>
@@ -37,7 +37,7 @@
         v-for="perk in character.perks"
         :key="perk"
         :name="perk"
-        @open="(n: string) => emit('open-perk', n)"
+        @open="(n: string) => $emit('open-perk', n)"
       />
     </div>
 
@@ -72,7 +72,7 @@
       >
         <button
           class="w-12 h-[50px] flex items-center justify-center text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-          @click="emit('add-try', -1)"
+          @click="$emit('add-try', -1)"
         >−</button>
         <div
           class="flex-1 text-center font-black text-lg font-display"
@@ -80,7 +80,7 @@
         >{{ progress.tries }}</div>
         <button
           class="w-12 h-[50px] flex items-center justify-center text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-          @click="emit('add-try', 1)"
+          @click="$emit('add-try', 1)"
         >+</button>
       </div>
       <button
@@ -88,7 +88,7 @@
         :class="progress.done
           ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
           : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)]'"
-        @click="emit('toggle-done')"
+        @click="$emit('toggle-done')"
       >{{ progress.done ? '✓ ERLEDIGT' : 'MARKIEREN' }}</button>
     </div>
 
@@ -107,7 +107,7 @@
 
     <!-- Done date -->
     <div v-if="progress.doneAt" class="text-[11px] text-[var(--color-text-muted)] mt-2 text-right">
-      ✓ {{ formatDate(progress.doneAt) }}
+      ✓ {{ formatDateTime(progress.doneAt) }}
     </div>
 
     <!-- Note -->
@@ -130,7 +130,7 @@
         class="flex items-center gap-2.5 py-1.5 border-b border-[var(--color-border-subtle)] text-xs text-[var(--color-text-secondary)] last:border-b-0"
       >
         <div class="w-1.5 h-1.5 rounded-full shrink-0" :class="a.success ? 'bg-[var(--color-accent)]' : 'bg-orange-400'" />
-        <span>{{ formatDate(a.ts) }}</span>
+        <span>{{ formatDateTime(a.ts) }}</span>
         <span class="ml-auto font-bold" :class="a.success ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'">
           {{ a.success ? '✓' : '✗' }}
         </span>
@@ -139,56 +139,62 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue';
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue';
 import type { Character, CharacterProgress } from '@/types';
 import { WIN_CONDITIONS } from '@/data';
 import { useTimer } from '@/composables/useTimer';
+import { formatDateTime } from '@/utils/format';
 import PerkButton from '@/components/shared/PerkButton.vue';
 import SectionLabel from '@/components/shared/SectionLabel.vue';
 
-const props = defineProps<{
-  character: Character;
-  progress: CharacterProgress;
-  isKiller: boolean;
-  readOnly: boolean;
-}>();
+const NOTE_DEBOUNCE_MS = 400;
 
-const emit = defineEmits<{
-  'toggle-done': [];
-  'add-try': [delta: number];
-  'open-perk': [name: string];
-  'toggle-priority': [];
-  'toggle-owned': [];
-  'update-note': [note: string];
-}>();
+export default defineComponent({
+  name: 'ExpandedPanel',
+  components: { PerkButton, SectionLabel },
+  props: {
+    character: { type: Object as PropType<Character>, required: true },
+    progress: { type: Object as PropType<CharacterProgress>, required: true },
+    isKiller: { type: Boolean, required: true },
+    readOnly: { type: Boolean, required: true },
+  },
+  emits: ['toggle-done', 'add-try', 'open-perk', 'toggle-priority', 'toggle-owned', 'update-note'],
 
-const { elapsed, running, start, stop, reset, fmtTime } = useTimer(props.character.id);
+  setup(props) {
+    // useTimer is a composable that needs reactive refs — keep it in setup.
+    const { elapsed, running, start, stop, reset, fmtTime } = useTimer(props.character.id);
+    return { elapsed, running, start, stop, reset, fmtTime };
+  },
 
-const winCondition = computed(() =>
-  props.isKiller ? WIN_CONDITIONS.killer : WIN_CONDITIONS.survivor,
-);
+  data() {
+    return {
+      noteTimer: null as ReturnType<typeof setTimeout> | null,
+    };
+  },
 
-const recentAttempts = computed(() =>
-  props.progress.attempts.slice(-5).reverse(),
-);
+  computed: {
+    winCondition(): string {
+      return this.isKiller ? WIN_CONDITIONS.killer : WIN_CONDITIONS.survivor;
+    },
+    recentAttempts() {
+      return this.progress.attempts.slice(-5).reverse();
+    },
+  },
 
-let noteTimer: ReturnType<typeof setTimeout> | null = null;
+  beforeUnmount() {
+    this.stop();
+    if (this.noteTimer) clearTimeout(this.noteTimer);
+  },
 
-function onNote(e: Event): void {
-  const val = (e.target as HTMLTextAreaElement).value;
-  if (noteTimer) clearTimeout(noteTimer);
-  // Debounce note saves to avoid flooding the store on every keystroke.
-  noteTimer = setTimeout(() => emit('update-note', val), 400);
-}
+  methods: {
+    formatDateTime,
 
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  return `${d.toLocaleDateString('de-DE')} ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-}
-
-onBeforeUnmount(() => {
-  stop();
-  if (noteTimer) clearTimeout(noteTimer);
+    onNote(e: Event): void {
+      const val = (e.target as HTMLTextAreaElement).value;
+      if (this.noteTimer) clearTimeout(this.noteTimer);
+      this.noteTimer = setTimeout(() => this.$emit('update-note', val), NOTE_DEBOUNCE_MS);
+    },
+  },
 });
 </script>

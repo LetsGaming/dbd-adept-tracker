@@ -1,6 +1,17 @@
-import { defineStore } from "pinia";
-import type { SyncPhase, SteamCreds } from "@/types";
-import { StorageService } from "@/services/storage";
+import { defineStore } from 'pinia';
+import type {
+  SteamCreds,
+  SteamAchievement,
+  SteamPlayerStatsResponse,
+  SteamSchemaResponse,
+  SteamValidation,
+  SteamIdParse,
+} from '@/types';
+import { SyncPhase } from '@/types';
+import { StorageService } from '@/services/storage';
+
+const PROXY_TIMEOUT_MS = 15_000;
+const DBD_APP_ID = '381210';
 
 interface SteamState {
   phase: SyncPhase;
@@ -10,24 +21,17 @@ interface SteamState {
   availableAdepts: string[];
 }
 
-interface SteamAchievement {
-  apiname: string;
-  achieved: number;
-  unlocktime?: number;
-  name: string;
-  displayName?: string;
-}
+const KEYS = { key: 'dbd_steam_key', id: 'dbd_steam_id' } as const;
+const ADEPT_CACHE_KEY = 'dbd_available_adepts';
+const ADEPT_NAME_PATTERN = /^Adept\s+/i;
 
-const KEYS = { key: "dbd_steam_key", id: "dbd_steam_id" } as const;
-const ADEPT_CACHE_KEY = "dbd_available_adepts";
-
-export const useSteamStore = defineStore("steam", {
+export const useSteamStore = defineStore('steam', {
   state: (): SteamState => ({
-    phase: "idle",
-    message: "",
+    phase: SyncPhase.Idle,
+    message: '',
     creds: {
-      key: StorageService.getString(KEYS.key) ?? "",
-      steamId: StorageService.getString(KEYS.id) ?? "",
+      key: StorageService.getString(KEYS.key) ?? '',
+      steamId: StorageService.getString(KEYS.id) ?? '',
     },
     availableAdepts: StorageService.get<string[]>(ADEPT_CACHE_KEY) ?? [],
   }),
@@ -39,25 +43,19 @@ export const useSteamStore = defineStore("steam", {
 
     /**
      * Check if a character has an obtainable adept achievement.
-     * Returns false if schema has been fetched and no matching adept exists.
      * Returns true if schema hasn't been fetched yet (optimistic default).
-     *
-     * Handles naming quirks like:
-     *   "Feng Min" ↔ "Adept Min"
-     *   "Detective David Tapp" ↔ "Adept Tapp"
-     *   "The Trapper" ↔ "Adept Trapper"
      */
     hasAdept(): (characterName: string) => boolean {
       return (characterName: string) => {
-        if (!this.availableAdepts.length) return true; // no data yet → assume yes
-        const search = characterName.toLowerCase().replace(/^the\s+/, "");
+        if (!this.availableAdepts.length) return true;
+        const search = characterName.toLowerCase().replace(/^the\s+/, '');
         const words = search.split(/\s+/);
         return this.availableAdepts.some(
           (a) =>
             a === search ||
             words.includes(a) ||
-            search.startsWith(a + " ") ||
-            search.endsWith(" " + a),
+            search.startsWith(a + ' ') ||
+            search.endsWith(' ' + a),
         );
       };
     },
@@ -71,29 +69,28 @@ export const useSteamStore = defineStore("steam", {
     },
 
     clearCreds(): void {
-      this.creds = { key: "", steamId: "" };
+      this.creds = { key: '', steamId: '' };
       StorageService.remove(KEYS.key);
       StorageService.remove(KEYS.id);
-      this.phase = "idle";
+      this.phase = SyncPhase.Idle;
     },
 
-    setPhase(phase: SyncPhase, message = ""): void {
+    setPhase(phase: SyncPhase, message = ''): void {
       this.phase = phase;
       this.message = message;
     },
 
-    async proxyFetch(steamUrl: string): Promise<unknown> {
+    async proxyFetch<T>(steamUrl: string): Promise<T> {
       const proxyUrl = `/api/steam?url=${encodeURIComponent(steamUrl)}`;
-      console.info("[Steam] Proxy:", proxyUrl.slice(0, 80) + "…");
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
       try {
         const r = await fetch(proxyUrl, { signal: controller.signal });
         if (!r.ok) {
-          const text = await r.text().catch(() => "");
+          const text = await r.text().catch(() => '');
           throw new Error(`Proxy HTTP ${r.status}: ${text.slice(0, 100)}`);
         }
-        return await r.json();
+        return (await r.json()) as T;
       } finally {
         clearTimeout(timeout);
       }
@@ -105,21 +102,18 @@ export const useSteamStore = defineStore("steam", {
         this.fetchSchema(),
       ]);
 
-      const achs = (
-        (schema as Record<string, unknown>)?.game as Record<string, unknown>
-      )?.availableGameStats as
-        | { achievements?: Array<{ name: string; displayName?: string }> }
-        | undefined;
+      const schemaAchievements =
+        schema?.game?.availableGameStats?.achievements ?? [];
 
       const adeptSchemaMap = new Map(
-        achs?.achievements
-          ?.filter((a) => /^Adept\s+/i.test(a.displayName ?? ""))
-          .map((a) => [a.name, a.displayName]) ?? [],
+        schemaAchievements
+          .filter((a) => ADEPT_NAME_PATTERN.test(a.displayName ?? ''))
+          .map((a) => [a.name, a.displayName]),
       );
 
       // Extract available adept character names for retired-detection
       const adeptNames = [...adeptSchemaMap.values()]
-        .map((d) => (d ?? "").replace(/^Adept\s+/i, "").trim().toLowerCase())
+        .map((d) => (d ?? '').replace(ADEPT_NAME_PATTERN, '').trim().toLowerCase())
         .filter(Boolean);
 
       if (adeptNames.length) {
@@ -134,96 +128,76 @@ export const useSteamStore = defineStore("steam", {
 
     async fetchAchievements(): Promise<SteamAchievement[]> {
       const { key, steamId } = this.creds;
-      const url = `https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/?appid=381210&key=${encodeURIComponent(key)}&steamid=${encodeURIComponent(steamId)}&l=english&format=json`;
-      const d = (await this.proxyFetch(url)) as Record<string, unknown>;
-      const ps = (
-        d as {
-          playerstats?: {
-            error?: string;
-            achievements?: Array<{
-              apiname: string;
-              achieved: number;
-              unlocktime?: number;
-            }>;
-          };
-        }
-      ).playerstats;
+      const url =
+        `https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/` +
+        `?appid=${DBD_APP_ID}&key=${encodeURIComponent(key)}` +
+        `&steamid=${encodeURIComponent(steamId)}&l=english&format=json`;
+
+      const d = await this.proxyFetch<SteamPlayerStatsResponse>(url);
+      const ps = d.playerstats;
 
       if (ps?.error) {
-        if (/invalid/i.test(ps.error)) throw new Error("API Key ungültig.");
-        if (/private/i.test(ps.error)) throw new Error("Profil privat.");
+        if (/invalid/i.test(ps.error)) throw new Error('API Key ungültig.');
+        if (/private/i.test(ps.error)) throw new Error('Profil privat.');
         throw new Error(`Steam: ${ps.error}`);
       }
-      if (!ps?.achievements) throw new Error("Keine Achievement-Daten.");
+      if (!ps?.achievements) throw new Error('Keine Achievement-Daten.');
 
-      const unlocked: SteamAchievement[] = [];
-      for (const a of ps.achievements) {
-        if (a.achieved === 1)
-          unlocked.push({
-            apiname: a.apiname,
-            achieved: a.achieved,
-            unlocktime: a.unlocktime,
-            name: a.apiname.replace(/_/g, " "),
-          });
-      }
-      return unlocked;
+      return ps.achievements
+        .filter((a) => a.achieved === 1)
+        .map((a) => ({
+          apiname: a.apiname,
+          achieved: a.achieved,
+          unlocktime: a.unlocktime,
+          name: a.apiname.replace(/_/g, ' '),
+        }));
     },
 
-    async fetchSchema(): Promise<unknown> {
+    async fetchSchema(): Promise<SteamSchemaResponse | null> {
       const base =
-        "https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?appid=381210&format=json&l=english";
+        `https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/` +
+        `?appid=${DBD_APP_ID}&format=json&l=english`;
       const url = this.creds.key
         ? `${base}&key=${encodeURIComponent(this.creds.key)}`
         : base;
       try {
-        return await this.proxyFetch(url);
+        return await this.proxyFetch<SteamSchemaResponse>(url);
       } catch (e) {
-        console.warn("[Steam] Schema failed:", (e as Error).message);
+        console.warn('[Steam] Schema failed:', (e as Error).message);
         return null;
       }
     },
 
-    /**
-     * Test-drive a key+id pair without persisting them.
-     * Returns the number of unlocked Adept achievements on success,
-     * or throws a user-readable Error on failure.
-     */
     async testConnection(key: string, steamId: string): Promise<number> {
       const { key: savedKey, steamId: savedId } = this.creds;
-      // Temporarily swap creds for the test fetch
       this.creds = { key, steamId };
       try {
         const adepts = await this.fetchAdepts();
         return adepts.length;
       } finally {
-        // Always restore — creds are only persisted via saveCreds()
         this.creds = { key: savedKey, steamId: savedId };
       }
     },
 
-    validateKey(k: string): { valid: boolean; msg: string } {
-      if (!k) return { valid: false, msg: "" };
-      if (/^[A-F0-9]{32}$/i.test(k)) return { valid: true, msg: "✓ Gültig" };
+    validateKey(k: string): SteamValidation {
+      if (!k) return { valid: false, msg: '' };
+      if (/^[A-F0-9]{32}$/i.test(k)) return { valid: true, msg: '✓ Gültig' };
       if (k.length < 32)
         return { valid: false, msg: `Noch ${32 - k.length} Zeichen` };
-      return { valid: false, msg: "Ungültig" };
+      return { valid: false, msg: 'Ungültig' };
     },
 
-    parseSteamId(input: string): { valid: boolean; id: string; msg: string } {
-      if (!input) return { valid: false, id: "", msg: "" };
+    parseSteamId(input: string): SteamIdParse {
+      if (!input) return { valid: false, id: '', msg: '' };
       const s = input.trim();
       if (/^\d{17}$/.test(s))
-        return { valid: true, id: s, msg: "✓ Steam ID64" };
+        return { valid: true, id: s, msg: '✓ Steam ID64' };
       const pm = s.match(/steamcommunity\.com\/profiles\/(\d{17})/);
-      if (pm) return { valid: true, id: pm[1], msg: "✓ ID64 aus URL" };
+      if (pm) return { valid: true, id: pm[1], msg: '✓ ID64 aus URL' };
       const vm = s.match(/steamcommunity\.com\/id\/([^/\s]+)/);
       if (vm)
-        return {
-          valid: false,
-          id: "",
-          msg: "⚠ Vanity-URL — steamid.io nutzen",
-        };
-      return { valid: false, id: "", msg: "Steam ID64 oder Profil-URL" };
+        return { valid: false, id: '', msg: '⚠ Vanity-URL — steamid.io nutzen' };
+      return { valid: false, id: '', msg: 'Steam ID64 oder Profil-URL' };
     },
   },
 });

@@ -15,7 +15,7 @@
     <!-- Header row -->
     <div
       class="flex items-center gap-3.5 px-4 py-3.5 cursor-pointer select-none"
-      @click="emit('toggle', character.id)"
+      @click="$emit('toggle', character.id)"
     >
       <Portrait
         :img-file="character.img"
@@ -36,7 +36,7 @@
             v-if="!readOnly"
             class="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
             :title="progress.owned ? 'Besitzt — klicken zum Entfernen' : 'Nicht besitzt — klicken zum Hinzufügen'"
-            @click.stop="emit('toggle-owned', character.id)"
+            @click.stop="$emit('toggle-owned', character.id)"
           >{{ progress.owned ? '🎮' : '🚫' }}</button>
           <span v-else-if="!progress.owned" class="shrink-0 opacity-60">🚫</span>
         </div>
@@ -74,41 +74,52 @@
       :progress="progress"
       :is-killer="isKiller"
       :read-only="readOnly"
-      @toggle-done="emit('toggle-done', character.id)"
-      @add-try="(d: number) => emit('add-try', character.id, d)"
-      @open-perk="(n: string) => emit('open-perk', n)"
-      @toggle-priority="emit('toggle-priority', character.id)"
-      @toggle-owned="emit('toggle-owned', character.id)"
-      @update-note="(n: string) => emit('update-note', character.id, n)"
+      @toggle-done="$emit('toggle-done', character.id)"
+      @add-try="(d: number) => $emit('add-try', character.id, d)"
+      @open-perk="(n: string) => $emit('open-perk', n)"
+      @toggle-priority="$emit('toggle-priority', character.id)"
+      @toggle-owned="$emit('toggle-owned', character.id)"
+      @update-note="(n: string) => $emit('update-note', character.id, n)"
     />
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue';
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue';
 import type { Character } from '@/types';
 import { useProgressStore } from '@/stores';
 import Portrait from '@/components/shared/Portrait.vue';
 import ExpandedPanel from '@/components/character/ExpandedPanel.vue';
 
-const props = defineProps<{
-  character: Character;
-  isActive: boolean;
-  isKiller: boolean;
-  readOnly: boolean;
-}>();
+export default defineComponent({
+  name: 'CharacterRow',
+  components: { Portrait, ExpandedPanel },
+  props: {
+    character: { type: Object as PropType<Character>, required: true },
+    isActive: { type: Boolean, required: true },
+    isKiller: { type: Boolean, required: true },
+    readOnly: { type: Boolean, required: true },
+  },
+  emits: [
+    'toggle',
+    'toggle-done',
+    'add-try',
+    'open-perk',
+    'toggle-priority',
+    'toggle-owned',
+    'update-note',
+  ],
 
-const emit = defineEmits<{
-  toggle: [id: string];
-  'toggle-done': [id: string];
-  'add-try': [id: string, delta: number];
-  'open-perk': [name: string];
-  'toggle-priority': [id: string];
-  'toggle-owned': [id: string];
-  'update-note': [id: string, note: string];
-}>();
-
-const store = useProgressStore();
-const progress = computed(() => store.getProgress(props.character.id));
-const retired = computed(() => store.isRetired(props.character.name));
+  computed: {
+    store() {
+      return useProgressStore();
+    },
+    progress() {
+      return this.store.getProgress(this.character.id);
+    },
+    retired(): boolean {
+      return this.store.isRetired(this.character.name);
+    },
+  },
+});
 </script>

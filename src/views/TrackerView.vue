@@ -39,25 +39,40 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref } from 'vue';
+<script lang="ts">
+import { defineComponent } from 'vue';
 import { useProgressStore } from '@/stores';
 import CharacterRow from '@/components/character/CharacterRow.vue';
 import PerkModal from '@/components/modals/PerkModal.vue';
 import SearchBar from '@/components/shared/SearchBar.vue';
 
-const store = useProgressStore();
-const openPerkName = ref('');
+export default defineComponent({
+  name: 'TrackerView',
+  components: { CharacterRow, PerkModal, SearchBar },
 
-function onToggle(id: string): void {
-  store.activeId = store.activeId === id ? null : id;
-  if (store.activeId) {
-    // Wait for the expanded panel to render before scrolling.
-    requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-char-id="${id}"]`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
-  }
-}
+  data() {
+    return {
+      openPerkName: '',
+    };
+  },
+
+  computed: {
+    store() {
+      return useProgressStore();
+    },
+  },
+
+  methods: {
+    onToggle(id: string): void {
+      this.store.activeId = this.store.activeId === id ? null : id;
+      if (this.store.activeId) {
+        requestAnimationFrame(() => {
+          document
+            .querySelector(`[data-char-id="${id}"]`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      }
+    },
+  },
+});
 </script>

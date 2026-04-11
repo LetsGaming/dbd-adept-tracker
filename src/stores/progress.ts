@@ -1,32 +1,37 @@
-import { defineStore } from "pinia";
+import { defineStore } from 'pinia';
 import type {
   ProgressMap,
   CharacterProgress,
   Character,
+  MetaData,
+  UndoEntry,
+  SharePayload,
+} from '@/types';
+import {
   TabId,
   PageId,
   FilterId,
-  MetaData,
-  UndoEntry,
   StatsSortCol,
   SortDir,
-} from "@/types";
+  UndoType,
+  Side,
+} from '@/types';
 import {
   SEED_SURVIVORS,
   SEED_KILLERS,
   DEFAULT_PROGRESS,
   DEFAULT_META,
-} from "@/data";
-import { DLC_APPID_TO_ROLE, FREE_ROLES } from "@/data/dlc-map";
-import { StorageService, RosterService } from "@/services";
-import { useSteamStore } from "./steam";
+} from '@/data';
+import { DLC_APPID_TO_ROLE, FREE_ROLES } from '@/data/dlc-map';
+import { StorageService, RosterService } from '@/services';
+import { useSteamStore } from './steam';
 
 const STORAGE_KEYS = {
-  progress: "dbd_progress",
-  meta: "dbd_meta",
-  undo: "dbd_undo",
-  uiState: "dbd_ui_state",
-  customOrder: "dbd_custom_order",
+  progress: 'dbd_progress',
+  meta: 'dbd_meta',
+  undo: 'dbd_undo',
+  uiState: 'dbd_ui_state',
+  customOrder: 'dbd_custom_order',
 } as const;
 
 const MAX_UNDO = 20;
@@ -57,10 +62,10 @@ interface ProgressState {
   customOrder: Record<string, number>;
 }
 
-export const useProgressStore = defineStore("progress", {
+export const useProgressStore = defineStore('progress', {
   state: (): ProgressState => {
     const ui =
-      StorageService.get<Record<string, unknown>>(STORAGE_KEYS.uiState) ?? {};
+      StorageService.get<Record<string, string | boolean>>(STORAGE_KEYS.uiState) ?? {};
     return {
       progress: StorageService.get<ProgressMap>(STORAGE_KEYS.progress) ?? {},
       meta: {
@@ -70,23 +75,21 @@ export const useProgressStore = defineStore("progress", {
       undoStack: StorageService.get<UndoEntry[]>(STORAGE_KEYS.undo) ?? [],
       survivors: [...SEED_SURVIVORS],
       killers: [...SEED_KILLERS],
-      tab: (ui.tab as TabId) ?? "survivor",
-      page: (ui.page as PageId) ?? "tracker",
-      filter: (ui.filter as FilterId) ?? "all",
-      search: (ui.search as string) ?? "",
+      tab: (ui.tab as TabId) ?? TabId.Survivor,
+      page: (ui.page as PageId) ?? PageId.Tracker,
+      filter: (ui.filter as FilterId) ?? FilterId.All,
+      search: (ui.search as string) ?? '',
       activeId: null,
       selectMode: false,
       selectedIds: new Set<string>(),
-      statsSort: (ui.statsSort as StatsSortCol) ?? "name",
-      statsSortDir: (ui.statsSortDir as SortDir) ?? "asc",
+      statsSort: (ui.statsSort as StatsSortCol) ?? StatsSortCol.Name,
+      statsSortDir: (ui.statsSortDir as SortDir) ?? SortDir.Asc,
       groupByChapter: (ui.groupByChapter as boolean) ?? false,
       ownedOnly: (ui.ownedOnly as boolean) ?? false,
       readOnly: false,
       ownProgress: null,
-      // Load custom order into reactive state so getters stay pure
       customOrder:
-        StorageService.get<Record<string, number>>(STORAGE_KEYS.customOrder) ??
-        {},
+        StorageService.get<Record<string, number>>(STORAGE_KEYS.customOrder) ?? {},
     };
   },
 
@@ -97,9 +100,9 @@ export const useProgressStore = defineStore("progress", {
 
     currentCharacters(): Character[] {
       const base =
-        this.tab === "all"
+        this.tab === TabId.All
           ? this.allCharacters
-          : this.tab === "killer"
+          : this.tab === TabId.Killer
             ? this.killers
             : this.survivors;
 
@@ -129,11 +132,13 @@ export const useProgressStore = defineStore("progress", {
         );
       }
 
-      if (this.filter === "done") {
+      if (this.filter === FilterId.Done) {
         list = list.filter((c) => resolveProgress(this.progress, c.id).done);
-      } else if (this.filter === "todo") {
+      } else if (this.filter === FilterId.Todo) {
         const steam = useSteamStore();
-        list = list.filter((c) => !resolveProgress(this.progress, c.id).done && steam.hasAdept(c.name));
+        list = list.filter(
+          (c) => !resolveProgress(this.progress, c.id).done && steam.hasAdept(c.name),
+        );
       }
 
       return list;
@@ -141,12 +146,16 @@ export const useProgressStore = defineStore("progress", {
 
     survivorsDone(): number {
       const steam = useSteamStore();
-      return this.survivors.filter((c) => this.progress[c.id]?.done && steam.hasAdept(c.name)).length;
+      return this.survivors.filter(
+        (c) => this.progress[c.id]?.done && steam.hasAdept(c.name),
+      ).length;
     },
 
     killersDone(): number {
       const steam = useSteamStore();
-      return this.killers.filter((c) => this.progress[c.id]?.done && steam.hasAdept(c.name)).length;
+      return this.killers.filter(
+        (c) => this.progress[c.id]?.done && steam.hasAdept(c.name),
+      ).length;
     },
 
     totalDone(): number {
@@ -168,11 +177,21 @@ export const useProgressStore = defineStore("progress", {
       return this.totalCount - this.totalDone;
     },
 
+    /** Average tries per completed adept — useful for estimating difficulty. */
+    avgTries(): number {
+      const done = this.allCharacters.filter((c) => this.progress[c.id]?.done);
+      if (!done.length) return 0;
+      const total = done.reduce(
+        (sum, c) => sum + (this.progress[c.id]?.tries ?? 1),
+        0,
+      );
+      return Math.round((total / done.length) * 10) / 10;
+    },
+
     isKiller(): (id: string) => boolean {
       return (id: string) => this.killers.some((k) => k.id === id);
     },
 
-    /** Check if a character's adept is retired (no achievement in Steam schema). */
     isRetired(): (name: string) => boolean {
       const steam = useSteamStore();
       return (name: string) => !steam.hasAdept(name);
@@ -186,13 +205,13 @@ export const useProgressStore = defineStore("progress", {
         .map((c) => this.progress[c.id]!.doneAt!)
         .sort();
 
-      if (doneWithTs.length < 2) return "—";
+      if (doneWithTs.length < 2) return '—';
 
       const span = doneWithTs[doneWithTs.length - 1] - doneWithTs[0];
       const rate = doneWithTs.length / (span / (24 * 3600_000));
       const rem = eligible.length - doneWithTs.length;
 
-      if (rate <= 0 || rem <= 0) return rem <= 0 ? "Fertig! 🎉" : "—";
+      if (rate <= 0 || rem <= 0) return rem <= 0 ? 'Fertig! 🎉' : '—';
 
       const daysLeft = Math.ceil(rem / rate);
       if (daysLeft > 365) return `~${Math.round(daysLeft / 30)} Mon.`;
@@ -202,26 +221,15 @@ export const useProgressStore = defineStore("progress", {
   },
 
   actions: {
-    /**
-     * Fetches the live character roster from the DBD wiki (with 24 h cache).
-     * The store is pre-populated with seed data synchronously at init time, so
-     * the app is fully usable before this resolves. When it does, Vue's
-     * reactivity propagates any changes (new characters, updated perks) to all
-     * consumers automatically.
-     *
-     * Called once on app mount. Safe to call multiple times — the service
-     * returns cached data immediately if the TTL hasn't expired.
-     */
     async loadRoster(): Promise<void> {
       const [survivors, killers] = await Promise.all([
-        RosterService.load("survivor", SEED_SURVIVORS),
-        RosterService.load("killer", SEED_KILLERS),
+        RosterService.load(Side.Survivor, SEED_SURVIVORS),
+        RosterService.load(Side.Killer, SEED_KILLERS),
       ]);
       this.survivors = survivors;
       this.killers = killers;
     },
 
-    /** Force-refresh roster from wiki on next load (e.g. manual refresh button). */
     invalidateRoster(): void {
       RosterService.invalidate();
     },
@@ -251,7 +259,7 @@ export const useProgressStore = defineStore("progress", {
       });
     },
 
-    _pushUndo(type: string, id: string): void {
+    _pushUndo(type: UndoType, id: string): void {
       const prev = { ...resolveProgress(this.progress, id) };
       this.undoStack.push({ type, id, prev, ts: Date.now() });
       if (this.undoStack.length > MAX_UNDO) this.undoStack.shift();
@@ -275,40 +283,43 @@ export const useProgressStore = defineStore("progress", {
       this._saveUI();
     },
 
-    /** Toggle sort column or flip direction if already active. */
     toggleSort(col: StatsSortCol): void {
       if (this.statsSort === col) {
-        this.statsSortDir = this.statsSortDir === "asc" ? "desc" : "asc";
+        this.statsSortDir =
+          this.statsSortDir === SortDir.Asc ? SortDir.Desc : SortDir.Asc;
       } else {
         this.statsSort = col;
-        this.statsSortDir = "asc";
+        this.statsSortDir = SortDir.Asc;
       }
       this._saveUI();
     },
 
-    sortIcon(col: string): string {
+    sortIcon(col: StatsSortCol): string {
       return this.statsSort === col
-        ? this.statsSortDir === "asc"
-          ? "↑"
-          : "↓"
-        : "";
+        ? this.statsSortDir === SortDir.Asc
+          ? '↑'
+          : '↓'
+        : '';
     },
 
     // ─── Progress mutations ───────────────────────────────────────
 
     toggleDone(id: string): void {
       if (this.readOnly) return;
-      this._pushUndo("toggleDone", id);
+      this._pushUndo(UndoType.ToggleDone, id);
       const prev = resolveProgress(this.progress, id);
 
       if (!prev.done) {
         this.meta.streak++;
         this.meta.bestStreak = Math.max(this.meta.bestStreak, this.meta.streak);
         if (!this.meta.firstPlayAt) this.meta.firstPlayAt = Date.now();
+        // QoL: You can't complete an adept with 0 attempts — ensure at least 1.
+        const tries = Math.max(prev.tries, 1);
         this.progress[id] = {
           ...prev,
           done: true,
           doneAt: Date.now(),
+          tries,
           attempts: [...prev.attempts, { ts: Date.now(), success: true }],
         };
       } else {
@@ -329,7 +340,7 @@ export const useProgressStore = defineStore("progress", {
 
     addTry(id: string, delta: number): void {
       if (this.readOnly) return;
-      this._pushUndo("addTry", id);
+      this._pushUndo(UndoType.AddTry, id);
       const prev = resolveProgress(this.progress, id);
 
       if (delta > 0 && !prev.done) {
@@ -362,7 +373,7 @@ export const useProgressStore = defineStore("progress", {
 
     togglePriority(id: string): void {
       if (this.readOnly) return;
-      this._pushUndo("togglePriority", id);
+      this._pushUndo(UndoType.TogglePriority, id);
       const prev = resolveProgress(this.progress, id);
       this.progress[id] = { ...prev, priority: !prev.priority };
       this._saveProgress();
@@ -375,15 +386,9 @@ export const useProgressStore = defineStore("progress", {
       this._saveProgress();
     },
 
-    /**
-     * Import ownership from a list of Steam app IDs (from dynamicstore/userdata rgOwnedApps).
-     * Only marks characters as owned — never removes ownership.
-     * Returns the number of characters newly marked as owned.
-     */
     importOwnershipFromAppIds(ownedAppIds: Set<number>): number {
       if (this.readOnly) return 0;
 
-      // Build set of owned roles from matched DLC appids + free roles
       const ownedRoles = new Set<string>(FREE_ROLES);
       for (const [appId, role] of Object.entries(DLC_APPID_TO_ROLE)) {
         if (ownedAppIds.has(Number(appId))) {
@@ -412,7 +417,7 @@ export const useProgressStore = defineStore("progress", {
       this._saveProgress();
     },
 
-    saveBuild(id: string, build: CharacterProgress["build"]): void {
+    saveBuild(id: string, build: CharacterProgress['build']): void {
       if (this.readOnly) return;
       const prev = resolveProgress(this.progress, id);
       this.progress[id] = { ...prev, build };
@@ -422,7 +427,7 @@ export const useProgressStore = defineStore("progress", {
     undo(): boolean {
       if (this.readOnly || !this.undoStack.length) return false;
       const entry = this.undoStack.pop()!;
-      this.progress[entry.id] = entry.prev as CharacterProgress;
+      this.progress[entry.id] = entry.prev;
       StorageService.set(STORAGE_KEYS.undo, this.undoStack);
       this._saveProgress();
       return true;
@@ -432,10 +437,13 @@ export const useProgressStore = defineStore("progress", {
       for (const { id, ts } of entries) {
         if (!this.progress[id]?.done) {
           const prev = resolveProgress(this.progress, id);
+          // QoL: Steam-imported adepts also need at least 1 try.
+          const tries = Math.max(prev.tries, 1);
           this.progress[id] = {
             ...prev,
             done: true,
             doneAt: ts || Date.now(),
+            tries,
             attempts: [
               ...prev.attempts,
               { ts: ts || Date.now(), success: true },
@@ -449,7 +457,7 @@ export const useProgressStore = defineStore("progress", {
     switchTab(tab: TabId): void {
       this.tab = tab;
       this.activeId = null;
-      this.search = "";
+      this.search = '';
       this.selectedIds = new Set();
       this.selectMode = false;
       this._saveUI();
@@ -462,9 +470,9 @@ export const useProgressStore = defineStore("progress", {
 
     randomPick(): Character | null {
       const base =
-        this.tab === "killer"
+        this.tab === TabId.Killer
           ? this.killers
-          : this.tab === "survivor"
+          : this.tab === TabId.Survivor
             ? this.survivors
             : this.allCharacters;
 
@@ -479,7 +487,7 @@ export const useProgressStore = defineStore("progress", {
 
       const pick = weighted[Math.floor(Math.random() * weighted.length)];
       this.activeId = pick.id;
-      this.page = "tracker";
+      this.page = PageId.Tracker;
       this._saveUI();
       return pick;
     },
@@ -532,7 +540,7 @@ export const useProgressStore = defineStore("progress", {
     },
 
     generateShareData(): string {
-      const p: Record<string, { d: number; t: number }> = {};
+      const p: SharePayload['p'] = {};
       for (const [id, v] of Object.entries(this.progress)) {
         if (v?.done || v?.tries) {
           p[id] = { d: v.done ? 1 : 0, t: v.tries || 0 };
@@ -543,9 +551,7 @@ export const useProgressStore = defineStore("progress", {
 
     loadShareData(encoded: string): boolean {
       try {
-        const data = JSON.parse(atob(encoded)) as {
-          p: Record<string, { d: number; t: number }>;
-        };
+        const data = JSON.parse(atob(encoded)) as SharePayload;
         if (!data.p) return false;
 
         this.ownProgress = { ...this.progress };
