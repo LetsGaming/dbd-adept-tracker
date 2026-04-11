@@ -2,6 +2,7 @@
   <div class="search-select" :class="{ 'search-select-open': isOpen }">
     <!-- Trigger -->
     <button
+      ref="trigger"
       class="search-select-trigger"
       :title="modelValue || placeholder"
       @click.stop="toggle"
@@ -11,10 +12,15 @@
       <span class="search-select-arrow">▾</span>
     </button>
 
-    <!-- Overlay + Dropdown (same stacking context, no Teleport) -->
+    <!-- Overlay + Dropdown -->
     <template v-if="isOpen">
       <div class="search-select-overlay" @mousedown="close" />
-      <div class="search-select-dropdown" @mousedown.stop>
+      <div
+        ref="dropdown"
+        class="search-select-dropdown"
+        :class="{ 'search-select-dropdown-flip': flipUp }"
+        @mousedown.stop
+      >
         <!-- Search -->
         <div class="search-select-search-wrap">
           <input
@@ -79,6 +85,9 @@ interface OptionGroup {
   items: BuildOption[];
 }
 
+/** Minimum space (px) needed below the trigger to open downward. */
+const DROPDOWN_HEIGHT_ESTIMATE = 260;
+
 export default defineComponent({
   name: 'SearchSelect',
   props: {
@@ -94,6 +103,7 @@ export default defineComponent({
       isOpen: false,
       query: '',
       highlightIdx: -1,
+      flipUp: false,
     };
   },
 
@@ -134,9 +144,10 @@ export default defineComponent({
     },
 
     open(): void {
-      this.isOpen = true;
       this.query = '';
       this.highlightIdx = -1;
+      this.flipUp = this.shouldFlip();
+      this.isOpen = true;
       this.$nextTick(() => {
         (this.$refs.searchInput as HTMLInputElement)?.focus();
       });
@@ -144,6 +155,17 @@ export default defineComponent({
 
     close(): void {
       this.isOpen = false;
+    },
+
+    /** Check if the dropdown should open upward instead of downward. */
+    shouldFlip(): boolean {
+      const trigger = this.$refs.trigger as HTMLElement | undefined;
+      if (!trigger) return false;
+      const rect = trigger.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      // Flip upward if not enough space below AND more space above
+      return spaceBelow < DROPDOWN_HEIGHT_ESTIMATE && spaceAbove > spaceBelow;
     },
 
     select(name: string): void {
@@ -217,14 +239,13 @@ export default defineComponent({
   font-size: 10px;
 }
 
-/* Overlay: fixed fullscreen, closes dropdown on click */
 .search-select-overlay {
   position: fixed;
   inset: 0;
   z-index: 900;
 }
 
-/* Dropdown: positioned relative to trigger, above overlay */
+/* Default: open downward */
 .search-select-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -237,6 +258,13 @@ export default defineComponent({
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   overflow: hidden;
   min-width: 220px;
+}
+
+/* Flipped: open upward */
+.search-select-dropdown-flip {
+  top: auto;
+  bottom: calc(100% + 4px);
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
 }
 
 .search-select-search-wrap {
