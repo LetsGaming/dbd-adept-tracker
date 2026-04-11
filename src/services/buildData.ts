@@ -3,7 +3,7 @@ import { SURVIVOR_ITEMS } from '@/data/build-seed';
 import { StorageService, TTL } from './storage';
 
 const WIKI_API = 'https://deadbydaylight.wiki.gg/api.php';
-const CACHE_PREFIX = 'addons_v3_';
+const CACHE_PREFIX = 'addons_v4_';
 
 const inflight = new Map<string, Promise<BuildOption[]>>();
 
@@ -21,7 +21,6 @@ async function wikiQuery<T>(params: Record<string, string>): Promise<T> {
 
 interface WikiSection {
   index: string;
-  toclevel: number;
   line: string;
 }
 
@@ -35,131 +34,14 @@ interface WikiTextResponse {
   error?: unknown;
 }
 
-// ─── Section finding ──────────────────────────────────────────────────────────
+// ─── Redirect resolution ──────────────────────────────────────────────────────
 
 /**
- * Matches any section whose title contains "add-on" (case-insensitive).
- * Handles: "Add-ons", "Bear Trap Add-ons", "Power Add-Ons",
- * "Available Add-ons", "Med-Kit Add-ons", etc.
+ * Some character pages (e.g. "The Hag") are wiki redirects (→ "Lisa Sherwood").
+ * The sections API returns [] for redirects.
+ * Detect this and resolve the actual page title.
  */
-const ADDON_SECTION_PATTERN = /add[\s-]?ons?/i;
-
-/** Blacklist of section names that match the pattern but aren't addon lists. */
-const SECTION_BLACKLIST = /changelog|history|patch|trivia/i;
-
-function findAddonSection(sections: WikiSection[]): WikiSection | undefined {
-  return sections.find(
-    (s) => ADDON_SECTION_PATTERN.test(s.line) && !SECTION_BLACKLIST.test(s.line),
-  );
-}
-
-// ─── HTML parsing ─────────────────────────────────────────────────────────────
-
-/**
- * Parse add-on names and rarities from wiki HTML.
- * Tries multiple strategies since wiki formatting varies.
- */
-function parseAddonsFromHtml(html: string): BuildOption[] {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const addons: BuildOption[] = [];
-  const seen = new Set<string>();
-
-  // Collect all candidate links, then filter
-  const allLinks = doc.querySelectorAll('a[title]');
-  for (const link of Array.from(allLinks)) {
-    const name = link.getAttribute('title')?.trim();
-    if (!name || seen.has(name)) continue;
-
-    // Skip meta/navigation links
-    if (name.includes(':')) continue;                    // "Category:...", "File:..."
-    if (name.startsWith('Dead by Daylight')) continue;   // Main page link
-    if (/^(Killers?|Survivors?|Perks?|Powers?)$/i.test(name)) continue;
-    if (name.length < 3) continue;
-
-    // Skip if the link text is just a number or single char
-    const text = link.textContent?.trim() ?? '';
-    if (text.length < 2) continue;
-
-    seen.add(name);
-    addons.push({
-      name,
-      rarity: detectRarityFromElement(link),
-      category: 'Add-on',
-    });
-  }
-
-  return addons;
-}
-
-const RARITY_KEYWORDS: Array<[string, BuildOption['rarity']]> = [
-  ['ultra', 'ultra-rare'],
-  ['iridescent', 'ultra-rare'],
-  ['veryrare', 'very-rare'],
-  ['very-rare', 'very-rare'],
-  ['very_rare', 'very-rare'],
-  ['purple', 'very-rare'],
-  ['rare', 'rare'],
-  ['green', 'rare'],
-  ['uncommon', 'uncommon'],
-  ['yellow', 'uncommon'],
-  ['common', 'common'],
-  ['brown', 'common'],
-];
-
-function detectRarityFromElement(el: Element): BuildOption['rarity'] {
-  let current: Element | null = el;
-  for (let depth = 0; depth < 5 && current; depth++) {
-    const haystack = (
-      current.className + ' ' +
-      (current.getAttribute('style') ?? '') + ' ' +
-      (current.getAttribute('data-rarity') ?? '')
-    ).toLowerCase();
-
-    for (const [keyword, rarity] of RARITY_KEYWORDS) {
-      if (haystack.includes(keyword)) return rarity;
-    }
-    current = current.parentElement;
-  }
-  return 'common';
-}
-
-// ─── Fetching strategies ──────────────────────────────────────────────────────
-
-/**
- * Strategy 1: Find the add-on section on the page, fetch only that section.
- * This is the most reliable when it works.
- */
-async function fetchViaSection(pageName: string): Promise<BuildOption[]> {
-  const sectionsData = await wikiQuery<WikiSectionsResponse>({
-    action: 'parse',
-    page: pageName,
-    prop: 'sections',
-  });
-
-  if (sectionsData.error || !sectionsData.parse?.sections) return [];
-
-  const section = findAddonSection(sectionsData.parse.sections);
-  if (!section) return [];
-
-  const htmlData = await wikiQuery<WikiTextResponse>({
-    action: 'parse',
-    page: pageName,
-    prop: 'text',
-    section: section.index,
-    disablelimitreport: '1',
-    disableeditsection: '1',
-  });
-
-  const html = htmlData.parse?.text?.['*'] ?? '';
-  return html ? parseAddonsFromHtml(html) : [];
-}
-
-/**
- * Strategy 2: Fetch the full page and look for addon content.
- * Fallback when section detection fails.
- * Scans the entire page but filters more aggressively.
- */
-async function fetchViaFullPage(pageName: string): Promise<BuildOption[]> {
+async function resolveRedirect(pageName: string): Promise<string> {
   const data = await wikiQuery<WikiTextResponse>({
     action: 'parse',
     page: pageName,
@@ -169,51 +51,132 @@ async function fetchViaFullPage(pageName: string): Promise<BuildOption[]> {
   });
 
   const html = data.parse?.text?.['*'] ?? '';
-  if (!html) return [];
+  // Wiki redirects have a specific HTML structure: <div class="redirectMsg">...<a href="/wiki/Target" title="Target">
+  const redirectMatch = html.match(/class="redirectMsg"[\s\S]*?<a[^>]+title="([^"]+)"/);
+  return redirectMatch?.[1] ?? pageName;
+}
 
+// ─── Section finding ──────────────────────────────────────────────────────────
+
+/** Matches any section whose title contains "add-on" (case-insensitive). */
+const ADDON_SECTION_PATTERN = /add[\s-]?ons?/i;
+
+function findAddonSection(sections: WikiSection[]): WikiSection | undefined {
+  return sections.find((s) => ADDON_SECTION_PATTERN.test(s.line));
+}
+
+// ─── HTML parsing ─────────────────────────────────────────────────────────────
+
+/**
+ * Rarity CSS class → BuildOption rarity mapping.
+ * The wiki uses classes like "common-item-element", "very-rare-item-element", "visceral-item-element".
+ */
+const RARITY_CLASS_MAP: Array<[string, BuildOption['rarity']]> = [
+  ['visceral-item', 'ultra-rare'],   // Iridescent addons
+  ['ultra-rare-item', 'ultra-rare'],
+  ['very-rare-item', 'very-rare'],
+  ['rare-item', 'rare'],
+  ['uncommon-item', 'uncommon'],
+  ['common-item', 'common'],
+];
+
+function detectRarityFromRow(row: Element): BuildOption['rarity'] {
+  // The rarity class is on a div inside the first <th> (the icon cell)
+  const firstTh = row.querySelector('th');
+  if (!firstTh) return 'common';
+
+  const allClasses = firstTh.innerHTML;
+  for (const [pattern, rarity] of RARITY_CLASS_MAP) {
+    if (allClasses.includes(pattern)) return rarity;
+  }
+  return 'common';
+}
+
+/**
+ * Parse addon names from the wiki's addon table structure.
+ *
+ * Each addon row looks like:
+ *   <tr>
+ *     <th>...(icon with rarity class)...</th>
+ *     <th><a title="Addon Name">Addon Name</a></th>
+ *     <td>...(description)...</td>
+ *   </tr>
+ *
+ * We specifically read the <a title="..."> inside the SECOND <th> of each row.
+ * This avoids picking up game mechanic links (Aura, Blindness, etc.) from descriptions.
+ */
+function parseAddonTable(html: string): BuildOption[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const addons: BuildOption[] = [];
   const seen = new Set<string>();
 
-  // Find all headings that mention "add-on", then collect links until the next heading
-  const allElements = doc.querySelectorAll('h1, h2, h3, h4, a[title]');
-  let inAddonSection = false;
+  const rows = doc.querySelectorAll('table tr');
+  for (const row of Array.from(rows)) {
+    const thCells = row.querySelectorAll('th');
+    // Addon rows have 2 <th> (icon + name) and 1 <td> (description)
+    if (thCells.length < 2) continue;
 
-  for (const el of Array.from(allElements)) {
-    if (/^H[1-4]$/.test(el.tagName)) {
-      inAddonSection = ADDON_SECTION_PATTERN.test(el.textContent ?? '');
-      continue;
-    }
+    // The name is in the second <th>
+    const nameCell = thCells[1];
+    const link = nameCell.querySelector('a[title]');
+    const name = link?.getAttribute('title')?.trim();
 
-    if (!inAddonSection) continue;
-
-    const name = el.getAttribute('title')?.trim();
     if (!name || seen.has(name)) continue;
-    if (name.includes(':') || name.length < 3) continue;
-    if (/^(Killers?|Survivors?|Perks?|Powers?)$/i.test(name)) continue;
-
     seen.add(name);
-    addons.push({
-      name,
-      rarity: detectRarityFromElement(el),
-      category: 'Add-on',
-    });
+
+    const rarity = detectRarityFromRow(row);
+    addons.push({ name, rarity, category: 'Add-on' });
   }
 
   return addons;
 }
 
-/**
- * Try both strategies in order. Returns the first non-empty result.
- */
+// ─── Fetching ─────────────────────────────────────────────────────────────────
+
 async function fetchAddonsForPage(pageName: string): Promise<BuildOption[]> {
   try {
-    // Strategy 1: section-based (precise)
-    const sectionResult = await fetchViaSection(pageName);
-    if (sectionResult.length) return sectionResult;
+    // Step 1: Get sections
+    let sectionsData = await wikiQuery<WikiSectionsResponse>({
+      action: 'parse',
+      page: pageName,
+      prop: 'sections',
+    });
 
-    // Strategy 2: full page scan (broader)
-    return await fetchViaFullPage(pageName);
+    if (sectionsData.error) return [];
+
+    // Step 2: If sections is empty, page might be a redirect — resolve it
+    let resolvedPage = pageName;
+    if (!sectionsData.parse?.sections?.length) {
+      resolvedPage = await resolveRedirect(pageName);
+      if (resolvedPage === pageName) return []; // Not a redirect, genuinely empty
+
+      sectionsData = await wikiQuery<WikiSectionsResponse>({
+        action: 'parse',
+        page: resolvedPage,
+        prop: 'sections',
+      });
+
+      if (sectionsData.error || !sectionsData.parse?.sections?.length) return [];
+    }
+
+    // Step 3: Find the add-on section
+    const section = findAddonSection(sectionsData.parse!.sections!);
+    if (!section) return [];
+
+    // Step 4: Fetch only that section's HTML
+    const htmlData = await wikiQuery<WikiTextResponse>({
+      action: 'parse',
+      page: resolvedPage,
+      prop: 'text',
+      section: section.index,
+      disablelimitreport: '1',
+      disableeditsection: '1',
+    });
+
+    const html = htmlData.parse?.text?.['*'] ?? '';
+    if (!html) return [];
+
+    return parseAddonTable(html);
   } catch (e) {
     console.warn(`[BuildData] Failed to fetch addons from "${pageName}":`, e);
     return [];
@@ -232,7 +195,10 @@ const ITEM_ADDON_PAGES: Record<string, string> = {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-function cachedFetch(cacheKey: string, fetcher: () => Promise<BuildOption[]>): Promise<BuildOption[]> {
+function cachedFetch(
+  cacheKey: string,
+  fetcher: () => Promise<BuildOption[]>,
+): Promise<BuildOption[]> {
   const fullKey = CACHE_PREFIX + cacheKey;
   const cached = StorageService.cacheFresh<BuildOption[]>(fullKey, TTL.PERK);
   if (cached) return Promise.resolve(cached);
