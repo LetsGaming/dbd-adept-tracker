@@ -57,6 +57,14 @@
                 {{ row.tries }}
               </span>
             </td>
+            <td class="px-3 py-2.5 text-center">
+              <span
+                v-if="row.difficulty"
+                class="rounded-md border px-2 py-0.5 text-[10px] font-bold"
+                :style="{ borderColor: DIFFICULTY_COLORS[row.difficulty] + '55', color: DIFFICULTY_COLORS[row.difficulty], background: DIFFICULTY_COLORS[row.difficulty] + '15' }"
+              >{{ DIFFICULTY_LABELS[row.difficulty] }}</span>
+              <span v-else class="text-[var(--color-text-faint)] text-xs">—</span>
+            </td>
             <td class="px-3 py-2.5 text-center text-xs text-[var(--color-text-muted)]">
               {{ row.done && row.doneAt ? formatDate(row.doneAt) : '—' }}
             </td>
@@ -75,8 +83,9 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { useProgressStore } from '@/stores';
-import { StatsSortCol, Side } from '@/types';
+import { StatsSortCol, Side, Difficulty } from '@/types';
 import { formatDate } from '@/utils/format';
+import { DIFFICULTY_LABELS, DIFFICULTY_COLORS } from '@/data';
 import Portrait from '@/components/shared/Portrait.vue';
 import StatCard from '@/components/shared/StatCard.vue';
 
@@ -90,6 +99,8 @@ interface StatsRow {
   doneAt: number | null;
   tries: number;
   priority: boolean;
+  difficulty: Difficulty | null;
+  lastPlayedAt: number | null;
 }
 
 export default defineComponent({
@@ -98,10 +109,13 @@ export default defineComponent({
 
   data() {
     return {
+      DIFFICULTY_LABELS,
+      DIFFICULTY_COLORS,
       columns: [
         { key: StatsSortCol.Name, label: 'Name' },
         { key: StatsSortCol.Side, label: 'Seite' },
         { key: StatsSortCol.Tries, label: 'Tries' },
+        { key: StatsSortCol.Difficulty, label: 'Diff.' },
         { key: StatsSortCol.DoneAt, label: 'Datum' },
         { key: StatsSortCol.Status, label: 'Status' },
       ] as const,
@@ -141,6 +155,8 @@ export default defineComponent({
         tries: (a, b) => dir * (a.tries - b.tries),
         doneAt: (a, b) => dir * ((a.doneAt ?? 0) - (b.doneAt ?? 0)),
         status: (a, b) => dir * ((a.done ? 1 : 0) - (b.done ? 1 : 0)),
+        difficulty: (a, b) => dir * ((a.difficulty ?? 0) - (b.difficulty ?? 0)),
+        lastPlayed: (a, b) => dir * ((a.lastPlayedAt ?? 0) - (b.lastPlayedAt ?? 0)),
       };
       return [...this.allRows].sort(fns[this.store.statsSort] ?? fns.name);
     },
@@ -151,11 +167,12 @@ export default defineComponent({
       const done = rows.filter((r) => r.done).length;
       const inProgress = rows.filter((r) => r.tries > 0 && !r.done).length;
       const avgTries = this.store.avgTries;
+      const avgDiff = this.store.avgDifficulty;
       return [
         { value: done, label: 'Adepts', color: 'var(--color-accent)' },
         { value: inProgress, label: 'In Arbeit', color: '#fb923c' },
-        { value: total - done, label: 'Offen', color: 'var(--color-text-primary)' },
         { value: avgTries, label: 'Ø Tries', color: 'var(--color-text-secondary)' },
+        { value: avgDiff || '—', label: 'Ø Diff.', color: '#c084fc' },
       ];
     },
   },

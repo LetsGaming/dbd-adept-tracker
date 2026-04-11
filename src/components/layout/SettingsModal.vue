@@ -57,7 +57,36 @@
               class="text-sm mt-0.5"
               style="color: var(--color-text-muted)"
             >
-              j/k navigieren, x erledigt, t +try
+              j/k navigieren, x erledigt, t +try, p priorität, Esc schließen
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <!-- System theme -->
+      <div class="mb-8">
+        <SectionLabel class="mb-4">Darstellung</SectionLabel>
+        <label
+          class="flex items-center gap-3 text-base cursor-pointer rounded-xl border p-4"
+          style="
+            border-color: var(--color-border-subtle);
+            background: var(--color-bg-elevated);
+            color: var(--color-text-secondary);
+          "
+        >
+          <input
+            type="checkbox"
+            :checked="settings.settings.useSystemTheme"
+            class="w-5 h-5 accent-[var(--color-accent)]"
+            @change="settings.toggleSystemTheme()"
+          />
+          <div>
+            <div>System-Theme</div>
+            <div
+              class="text-sm mt-0.5"
+              style="color: var(--color-text-muted)"
+            >
+              Dark/Light automatisch nach Betriebssystem
             </div>
           </div>
         </label>
@@ -78,6 +107,7 @@
           @import-json="$emit('import-json')"
           @export-stat-card="$emit('export-stat-card')"
           @share-link="$emit('share-link')"
+          @copy-clipboard="$emit('copy-clipboard')"
         />
       </div>
     </div>
@@ -107,6 +137,7 @@ export default defineComponent({
     'import-json',
     'export-stat-card',
     'share-link',
+    'copy-clipboard',
   ],
 
   data() {

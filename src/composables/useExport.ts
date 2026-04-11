@@ -1,6 +1,6 @@
 import { useProgressStore } from '@/stores';
 import { renderStatCard } from '@/services';
-import { showToast } from '@/composables';
+import { showToast } from '@/composables/useToast';
 import { downloadBlob } from '@/utils/format';
 import type { ProgressMap } from '@/types';
 
@@ -71,5 +71,15 @@ export function useExport() {
     }
   }
 
-  return { exportJSON, importJSON, exportStatCard, shareLink };
+  /** Copy a text summary to clipboard for Discord/Reddit sharing. */
+  async function copyToClipboard(): Promise<void> {
+    try {
+      await navigator.clipboard?.writeText(store.clipboardSummary);
+      await showToast('📋 In Zwischenablage kopiert');
+    } catch {
+      await showToast('✗ Fehler');
+    }
+  }
+
+  return { exportJSON, importJSON, exportStatCard, shareLink, copyToClipboard };
 }

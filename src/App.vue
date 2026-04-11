@@ -18,6 +18,7 @@
             @import-json="exp.importJSON"
             @export-stat-card="exp.exportStatCard"
             @share-link="exp.shareLink"
+            @copy-clipboard="exp.copyToClipboard"
             @steam-sync="sync.doSync"
             @steam-force-sync="sync.doForceSync"
             @exit-share="exitShare"
@@ -43,6 +44,7 @@
         @import-json="exp.importJSON"
         @export-stat-card="exp.exportStatCard"
         @share-link="exp.shareLink"
+        @copy-clipboard="exp.copyToClipboard"
       />
     </div>
   </ion-app>

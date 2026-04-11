@@ -63,6 +63,7 @@
         @import-json="$emit('import-json')"
         @export-stat-card="$emit('export-stat-card')"
         @share-link="$emit('share-link')"
+        @copy-clipboard="$emit('copy-clipboard')"
       />
     </div>
 
@@ -123,6 +124,7 @@ export default defineComponent({
     'import-json',
     'export-stat-card',
     'share-link',
+    'copy-clipboard',
     'steam-sync',
     'steam-force-sync',
     'exit-share',
@@ -165,6 +167,11 @@ export default defineComponent({
           label: '⏱ Est.',
           value: s.estimatedCompletion,
           color: '#c084fc',
+        },
+        {
+          label: '📅 Sessions',
+          value: String(s.sessions.length),
+          color: '#94a3b8',
         },
       ];
     },

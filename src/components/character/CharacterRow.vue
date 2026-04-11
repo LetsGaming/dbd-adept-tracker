@@ -80,6 +80,8 @@
       @toggle-priority="$emit('toggle-priority', character.id)"
       @toggle-owned="$emit('toggle-owned', character.id)"
       @update-note="(n: string) => $emit('update-note', character.id, n)"
+      @set-difficulty="(d) => $emit('set-difficulty', character.id, d)"
+      @save-build="(b) => $emit('save-build', character.id, b)"
     />
   </div>
 </template>
@@ -108,6 +110,8 @@ export default defineComponent({
     'toggle-priority',
     'toggle-owned',
     'update-note',
+    'set-difficulty',
+    'save-build',
   ],
 
   computed: {

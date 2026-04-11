@@ -44,6 +44,14 @@ export const useSettingsStore = defineStore('settings', {
       this._save();
     },
 
+    toggleSystemTheme(): void {
+      this.settings.useSystemTheme = !this.settings.useSystemTheme;
+      this._save();
+      if (this.settings.useSystemTheme) {
+        this._applySystemTheme();
+      }
+    },
+
     setAutoTheme(enabled: boolean, light: string, dark: string): void {
       this.settings.autoTheme = enabled;
       this.settings.autoThemeLight = light;
@@ -58,13 +66,38 @@ export const useSettingsStore = defineStore('settings', {
     },
 
     cycleTheme(): void {
+      // Disable system theme when manually cycling
+      if (this.settings.useSystemTheme) {
+        this.settings.useSystemTheme = false;
+        this._save();
+      }
       const idx = THEME_ORDER.indexOf(this.theme);
       this.setTheme(THEME_ORDER[(idx + 1) % THEME_ORDER.length]);
     },
 
     initTheme(): void {
-      this.setTheme(this.theme);
-      this._checkAutoTheme();
+      if (this.settings.useSystemTheme) {
+        this._applySystemTheme();
+        this._listenSystemTheme();
+      } else {
+        this.setTheme(this.theme);
+        this._checkAutoTheme();
+      }
+    },
+
+    /** Apply theme from OS prefers-color-scheme. */
+    _applySystemTheme(): void {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      this.setTheme(prefersDark ? ThemeId.Dark : ThemeId.Light);
+    },
+
+    /** Listen for OS theme changes. */
+    _listenSystemTheme(): void {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (this.settings.useSystemTheme) {
+          this.setTheme(e.matches ? ThemeId.Dark : ThemeId.Light);
+        }
+      });
     },
 
     _checkAutoTheme(): void {

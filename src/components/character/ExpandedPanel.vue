@@ -105,9 +105,54 @@
       </span>
     </div>
 
-    <!-- Done date -->
-    <div v-if="progress.doneAt" class="text-[11px] text-[var(--color-text-muted)] mt-2 text-right">
-      ✓ {{ formatDateTime(progress.doneAt) }}
+    <!-- Done date + difficulty -->
+    <div v-if="progress.doneAt" class="flex items-center justify-between mt-2">
+      <div v-if="progress.difficulty" class="flex items-center gap-1.5 text-xs">
+        <span
+          class="rounded-md border px-2 py-0.5 font-bold"
+          :style="{ borderColor: diffColor + '55', color: diffColor, background: diffColor + '15' }"
+        >{{ diffLabel }}</span>
+      </div>
+      <div class="text-[11px] text-[var(--color-text-muted)] text-right">
+        ✓ {{ formatDateTime(progress.doneAt) }}
+      </div>
+    </div>
+
+    <!-- Build planner -->
+    <div v-if="!readOnly" class="mt-2.5">
+      <SectionLabel class="mb-2">Build</SectionLabel>
+      <div class="grid grid-cols-2 gap-1.5">
+        <input
+          class="build-input"
+          :value="progress.build?.item ?? ''"
+          placeholder="Item…"
+          @input="onBuildChange('item', $event)"
+        />
+        <input
+          class="build-input"
+          :value="progress.build?.offering ?? ''"
+          placeholder="Offering…"
+          @input="onBuildChange('offering', $event)"
+        />
+        <input
+          class="build-input"
+          :value="progress.build?.addon1 ?? ''"
+          placeholder="Add-on 1…"
+          @input="onBuildChange('addon1', $event)"
+        />
+        <input
+          class="build-input"
+          :value="progress.build?.addon2 ?? ''"
+          placeholder="Add-on 2…"
+          @input="onBuildChange('addon2', $event)"
+        />
+      </div>
+    </div>
+    <div v-else-if="progress.build?.item" class="mt-2.5">
+      <SectionLabel class="mb-2">Build</SectionLabel>
+      <div class="text-xs text-[var(--color-text-secondary)]">
+        {{ [progress.build.item, progress.build.addon1, progress.build.addon2, progress.build.offering].filter(Boolean).join(' · ') }}
+      </div>
     </div>
 
     <!-- Note -->
@@ -141,14 +186,17 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue';
-import type { Character, CharacterProgress } from '@/types';
-import { WIN_CONDITIONS } from '@/data';
+import type { Character, CharacterProgress, Build } from '@/types';
+import { WIN_CONDITIONS, DIFFICULTY_LABELS, DIFFICULTY_COLORS } from '@/data';
 import { useTimer } from '@/composables/useTimer';
 import { formatDateTime } from '@/utils/format';
 import PerkButton from '@/components/shared/PerkButton.vue';
 import SectionLabel from '@/components/shared/SectionLabel.vue';
 
 const NOTE_DEBOUNCE_MS = 400;
+const BUILD_DEBOUNCE_MS = 600;
+
+const EMPTY_BUILD: Build = { item: '', addon1: '', addon2: '', offering: '' };
 
 export default defineComponent({
   name: 'ExpandedPanel',
@@ -159,10 +207,9 @@ export default defineComponent({
     isKiller: { type: Boolean, required: true },
     readOnly: { type: Boolean, required: true },
   },
-  emits: ['toggle-done', 'add-try', 'open-perk', 'toggle-priority', 'toggle-owned', 'update-note'],
+  emits: ['toggle-done', 'add-try', 'open-perk', 'toggle-priority', 'toggle-owned', 'update-note', 'set-difficulty', 'save-build'],
 
   setup(props) {
-    // useTimer is a composable that needs reactive refs — keep it in setup.
     const { elapsed, running, start, stop, reset, fmtTime } = useTimer(props.character.id);
     return { elapsed, running, start, stop, reset, fmtTime };
   },
@@ -170,6 +217,7 @@ export default defineComponent({
   data() {
     return {
       noteTimer: null as ReturnType<typeof setTimeout> | null,
+      buildTimer: null as ReturnType<typeof setTimeout> | null,
     };
   },
 
@@ -180,11 +228,18 @@ export default defineComponent({
     recentAttempts() {
       return this.progress.attempts.slice(-5).reverse();
     },
+    diffLabel(): string {
+      return this.progress.difficulty ? DIFFICULTY_LABELS[this.progress.difficulty] ?? '' : '';
+    },
+    diffColor(): string {
+      return this.progress.difficulty ? DIFFICULTY_COLORS[this.progress.difficulty] ?? '#888' : '#888';
+    },
   },
 
   beforeUnmount() {
     this.stop();
     if (this.noteTimer) clearTimeout(this.noteTimer);
+    if (this.buildTimer) clearTimeout(this.buildTimer);
   },
 
   methods: {
@@ -195,6 +250,34 @@ export default defineComponent({
       if (this.noteTimer) clearTimeout(this.noteTimer);
       this.noteTimer = setTimeout(() => this.$emit('update-note', val), NOTE_DEBOUNCE_MS);
     },
+
+    onBuildChange(field: keyof Build, e: Event): void {
+      const val = (e.target as HTMLInputElement).value;
+      const current = this.progress.build ?? { ...EMPTY_BUILD };
+      const updated = { ...current, [field]: val };
+      if (this.buildTimer) clearTimeout(this.buildTimer);
+      this.buildTimer = setTimeout(() => this.$emit('save-build', updated), BUILD_DEBOUNCE_MS);
+    },
   },
 });
 </script>
+
+<style scoped>
+.build-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.build-input:focus {
+  border-color: var(--color-accent);
+}
+.build-input::placeholder {
+  color: var(--color-text-faint);
+}
+</style>

@@ -4,3 +4,4 @@ export { useTheme } from './useTheme';
 export { useTimer } from './useTimer';
 export { useSteamSync } from './useSteamSync';
 export { useExport } from './useExport';
+export { useKeyboard } from './useKeyboard';

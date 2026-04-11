@@ -24,6 +24,7 @@
       <option value="all">Alle</option>
       <option value="todo">Ausstehend</option>
       <option value="done">Erledigt</option>
+      <option value="playable">🎮 Spielbar</option>
     </select>
   </div>
 </template>
