@@ -118,31 +118,47 @@
       </div>
     </div>
 
-    <!-- Build planner -->
-    <div v-if="!readOnly" class="mt-2.5">
-      <BuildPlanner
-        :character="character"
-        :current-build="progress.build"
-        :is-killer="isKiller"
-        @save-build="(b) => $emit('save-build', b)"
-      />
+    <!-- ═══ Collapsible extras: Build + Notes ═══ -->
+    <div v-if="!readOnly" class="mt-3">
+      <button
+        class="flex items-center gap-2 w-full text-left text-xs font-semibold py-1.5 cursor-pointer transition-colors"
+        :class="extrasOpen ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'"
+        @click="extrasOpen = !extrasOpen"
+      >
+        <span class="transition-transform text-[10px]" :class="{ 'rotate-90': extrasOpen }">▶</span>
+        <span>Build &amp; Notizen</span>
+        <span v-if="hasExtrasContent" class="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] shrink-0" title="Hat Inhalt" />
+      </button>
+
+      <div v-if="extrasOpen" class="mt-1.5 space-y-2.5">
+        <!-- Build planner -->
+        <BuildPlanner
+          :character="character"
+          :current-build="progress.build"
+          :is-killer="isKiller"
+          @save-build="(b) => $emit('save-build', b)"
+        />
+
+        <!-- Note -->
+        <div>
+          <div class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1">Notizen</div>
+          <textarea
+            class="w-full rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] text-sm p-3 resize-y outline-none focus:border-[var(--color-accent)] placeholder:text-[var(--color-text-faint)]"
+            :value="progress.note"
+            placeholder="Notizen…"
+            rows="2"
+            @input="onNote"
+          />
+        </div>
+      </div>
     </div>
+
+    <!-- Read-only build summary -->
     <div v-else-if="progress.build?.item || progress.build?.addon1 || progress.build?.offering" class="mt-2.5">
       <SectionLabel class="mb-2">Build</SectionLabel>
       <div class="text-xs text-[var(--color-text-secondary)]">
         {{ [progress.build.item, progress.build.addon1, progress.build.addon2, progress.build.offering].filter(Boolean).join(' · ') }}
       </div>
-    </div>
-
-    <!-- Note -->
-    <div v-if="!readOnly" class="mt-2.5">
-      <textarea
-        class="w-full rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] text-sm p-3 resize-y outline-none focus:border-[var(--color-accent)] placeholder:text-[var(--color-text-faint)]"
-        :value="progress.note"
-        placeholder="Notizen…"
-        rows="2"
-        @input="onNote"
-      />
     </div>
 
     <!-- Recent attempts -->
@@ -194,6 +210,8 @@ export default defineComponent({
   data() {
     return {
       noteTimer: null as ReturnType<typeof setTimeout> | null,
+      /** Whether the build+notes section is expanded. Auto-opens if content exists. */
+      extrasOpen: false,
     };
   },
 
@@ -210,6 +228,21 @@ export default defineComponent({
     diffColor(): string {
       return this.progress.difficulty ? DIFFICULTY_COLORS[this.progress.difficulty] ?? '#888' : '#888';
     },
+    /** True if build or note has any content — shows a dot indicator on the toggle. */
+    hasExtrasContent(): boolean {
+      const b = this.progress.build;
+      return !!(
+        this.progress.note ||
+        b?.item || b?.addon1 || b?.addon2 || b?.offering
+      );
+    },
+  },
+
+  created() {
+    // Auto-open extras section if there's already content saved
+    if (this.hasExtrasContent) {
+      this.extrasOpen = true;
+    }
   },
 
   beforeUnmount() {

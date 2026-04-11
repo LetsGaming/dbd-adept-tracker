@@ -4,19 +4,19 @@
 
     <!-- Item (survivors only) -->
     <div v-if="!isKiller" class="mb-1.5">
-      <div class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1">Item</div>
+      <div class="build-field-label">Item</div>
       <SearchSelect
         :model-value="build.item"
         :options="itemOptions"
         placeholder="Item wählen…"
-        @update:model-value="onChange('item', $event)"
+        @update:model-value="onItemChange"
       />
     </div>
 
     <!-- Add-ons -->
     <div class="grid grid-cols-2 gap-1.5 mb-1.5">
       <div>
-        <div class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1">Add-on 1</div>
+        <div class="build-field-label">Add-on 1</div>
         <SearchSelect
           :model-value="build.addon1"
           :options="addonOptions"
@@ -26,7 +26,7 @@
         />
       </div>
       <div>
-        <div class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1">Add-on 2</div>
+        <div class="build-field-label">Add-on 2</div>
         <SearchSelect
           :model-value="build.addon2"
           :options="addonOptions"
@@ -39,7 +39,7 @@
 
     <!-- Offering -->
     <div>
-      <div class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1">Offering</div>
+      <div class="build-field-label">Offering</div>
       <SearchSelect
         :model-value="build.offering"
         :options="offeringOptions"
@@ -94,21 +94,48 @@ export default defineComponent({
     'character.name': {
       immediate: true,
       handler() {
-        this.loadAddons();
+        if (this.isKiller) this.loadKillerAddons();
       },
     },
   },
 
+  mounted() {
+    // Load survivor item addons if an item is already selected
+    if (!this.isKiller && this.build.item) {
+      this.loadItemAddons(this.build.item);
+    }
+  },
+
   methods: {
     onChange(field: keyof Build, value: string): void {
-      const updated: Build = { ...this.build, [field]: value };
-      this.$emit('save-build', updated);
+      this.$emit('save-build', { ...this.build, [field]: value });
     },
 
-    async loadAddons(): Promise<void> {
+    /** When the item changes for a survivor, reload item-specific addons and clear old ones. */
+    onItemChange(itemName: string): void {
+      const updated: Build = { ...this.build, item: itemName, addon1: '', addon2: '' };
+      this.$emit('save-build', updated);
+      if (itemName) {
+        this.loadItemAddons(itemName);
+      } else {
+        this.addonOptions = [];
+      }
+    },
+
+    async loadKillerAddons(): Promise<void> {
       this.addonsLoading = true;
       try {
-        this.addonOptions = await BuildDataService.getAddons(this.character.name);
+        this.addonOptions = await BuildDataService.getKillerAddons(this.character.name);
+      } catch {
+        this.addonOptions = [];
+      }
+      this.addonsLoading = false;
+    },
+
+    async loadItemAddons(itemName: string): Promise<void> {
+      this.addonsLoading = true;
+      try {
+        this.addonOptions = await BuildDataService.getItemAddons(itemName);
       } catch {
         this.addonOptions = [];
       }
@@ -117,3 +144,13 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.build-field-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin-bottom: 3px;
+}
+</style>

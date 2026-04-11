@@ -1,9 +1,9 @@
 import type { BuildOption } from '@/data/build-seed';
-import type { WikiParseResponse } from '@/types';
+import { SURVIVOR_ITEMS } from '@/data/build-seed';
 import { StorageService, TTL } from './storage';
 
 const WIKI_API = 'https://deadbydaylight.wiki.gg/api.php';
-const CACHE_PREFIX = 'addons_';
+const CACHE_PREFIX = 'addons_v2_';
 
 const inflight = new Map<string, Promise<BuildOption[]>>();
 
@@ -17,134 +17,233 @@ async function wikiQuery<T>(params: Record<string, string>): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// ─── Section-based addon fetching ─────────────────────────────────────────────
+
+interface WikiSection {
+  index: string;
+  toclevel: number;
+  line: string;
+  number: string;
+}
+
+interface WikiSectionsResponse {
+  parse?: { sections?: WikiSection[] };
+  error?: unknown;
+}
+
+interface WikiSectionHtmlResponse {
+  parse?: { text?: { '*'?: string } };
+  error?: unknown;
+}
+
 /**
- * Parse add-on data from a character's wiki page HTML.
- * Add-ons are typically listed in tables with rarity info.
- * Falls back to extracting link titles from add-on sections.
+ * Finds the "Add-ons" section index on a character's wiki page,
+ * then fetches only that section's HTML and parses addon names + rarities.
  */
-function parseAddonsFromHtml(html: string): BuildOption[] {
+async function fetchKillerAddons(characterName: string): Promise<BuildOption[]> {
+  // Step 1: Get page sections to find the "Add-ons" section index
+  const sectionsData = await wikiQuery<WikiSectionsResponse>({
+    action: 'parse',
+    page: characterName,
+    prop: 'sections',
+  });
+
+  if (sectionsData.error || !sectionsData.parse?.sections) return [];
+
+  const addonSection = sectionsData.parse.sections.find(
+    (s) => /^add[\s-]?ons?$/i.test(s.line),
+  );
+  if (!addonSection) return [];
+
+  // Step 2: Fetch only the add-on section's rendered HTML
+  const htmlData = await wikiQuery<WikiSectionHtmlResponse>({
+    action: 'parse',
+    page: characterName,
+    prop: 'text',
+    section: addonSection.index,
+    disablelimitreport: '1',
+    disableeditsection: '1',
+  });
+
+  const html = htmlData.parse?.text?.['*'] ?? '';
+  if (!html) return [];
+
+  return parseAddonSection(html);
+}
+
+/**
+ * Parse add-on names and rarities from a wiki section's HTML.
+ * Looks for .addonPortrait wrappers, .wikitable rows, or plain links.
+ */
+function parseAddonSection(html: string): BuildOption[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const addons: BuildOption[] = [];
   const seen = new Set<string>();
 
-  // Strategy 1: Look for add-on tables (most common wiki format)
-  const rows = doc.querySelectorAll(
-    '.wikitable tr, .addonTable tr, table.sortable tr',
+  // Strategy 1: .charPortraitWrapper / .addonPortrait style elements (wiki.gg uses these)
+  const portraitLinks = doc.querySelectorAll(
+    '.charPortraitWrapper a[title], .addonPortrait a[title], .inventoryItem a[title]',
   );
-  for (const row of Array.from(rows)) {
-    const cells = row.querySelectorAll('td');
-    if (cells.length < 2) continue;
-
-    // Find the cell with the add-on name (usually has a link)
-    const nameLink = row.querySelector('td a[title]');
-    const name = nameLink?.getAttribute('title')?.trim();
+  for (const link of Array.from(portraitLinks)) {
+    const name = link.getAttribute('title')?.trim();
     if (!name || seen.has(name)) continue;
-
-    // Try to detect rarity from class or cell content
-    const rarity = detectRarity(row);
     seen.add(name);
-    addons.push({ name, rarity, category: 'Add-on' });
+    addons.push({ name, rarity: detectRarityFromElement(link), category: 'Add-on' });
   }
 
-  // Strategy 2: If table parsing found nothing, look for add-on links
-  // in sections that contain "Add-on" in their heading
+  // Strategy 2: Table rows with addon links
   if (!addons.length) {
-    const headings = doc.querySelectorAll('h2, h3');
-    for (const h of Array.from(headings)) {
-      if (!/add-?on/i.test(h.textContent ?? '')) continue;
+    const rows = doc.querySelectorAll('table tr');
+    for (const row of Array.from(rows)) {
+      const link = row.querySelector('td a[title]');
+      const name = link?.getAttribute('title')?.trim();
+      if (!name || seen.has(name)) continue;
+      // Skip navigation/meta links
+      if (name.includes(':') || name.startsWith('File:')) continue;
+      seen.add(name);
+      addons.push({ name, rarity: detectRarityFromElement(row), category: 'Add-on' });
+    }
+  }
 
-      let sibling = h.nextElementSibling;
-      while (sibling && !['H2', 'H3'].includes(sibling.tagName)) {
-        const links = sibling.querySelectorAll('a[title]');
-        for (const link of Array.from(links)) {
-          const name = link.getAttribute('title')?.trim();
-          if (name && !seen.has(name) && name.length > 2) {
-            seen.add(name);
-            addons.push({ name, rarity: 'common', category: 'Add-on' });
-          }
-        }
-        sibling = sibling.nextElementSibling;
-      }
+  // Strategy 3: Any remaining links in the section (last resort)
+  if (!addons.length) {
+    const links = doc.querySelectorAll('a[title]');
+    for (const link of Array.from(links)) {
+      const name = link.getAttribute('title')?.trim();
+      if (!name || seen.has(name)) continue;
+      if (name.includes(':') || name.startsWith('File:') || name.length < 3) continue;
+      // Skip if it looks like a section/category link
+      if (/^(Add-ons?|Power|Killer|Survivor|Category)/i.test(name)) continue;
+      seen.add(name);
+      addons.push({ name, rarity: detectRarityFromElement(link), category: 'Add-on' });
     }
   }
 
   return addons;
 }
 
-const RARITY_PATTERNS: Array<[RegExp, BuildOption['rarity']]> = [
-  [/ultra[\s-]?rare/i, 'ultra-rare'],
-  [/very[\s-]?rare/i, 'very-rare'],
-  [/\brare\b/i, 'rare'],
-  [/uncommon/i, 'uncommon'],
-  [/common/i, 'common'],
+const RARITY_CSS: Array<[string, BuildOption['rarity']]> = [
+  ['ultra', 'ultra-rare'],
+  ['iridescent', 'ultra-rare'],
+  ['very', 'very-rare'],
+  ['purple', 'very-rare'],
+  ['rare', 'rare'],
+  ['green', 'rare'],
+  ['uncommon', 'uncommon'],
+  ['yellow', 'uncommon'],
+  ['common', 'common'],
+  ['brown', 'common'],
 ];
 
-const RARITY_CSS_CLASSES: Record<string, BuildOption['rarity']> = {
-  'rarity-common': 'common',
-  'rarity-uncommon': 'uncommon',
-  'rarity-rare': 'rare',
-  'rarity-veryrare': 'very-rare',
-  'rarity-ultrarare': 'ultra-rare',
-};
+function detectRarityFromElement(el: Element): BuildOption['rarity'] {
+  // Walk up to find rarity class or style
+  let current: Element | null = el;
+  for (let i = 0; i < 4 && current; i++) {
+    const cls = current.className.toLowerCase();
+    const style = (current.getAttribute('style') ?? '').toLowerCase();
+    const combined = cls + ' ' + style;
 
-function detectRarity(row: Element): BuildOption['rarity'] {
-  const cls = row.className + ' ' + (row.querySelector('td')?.className ?? '');
-  for (const [cssClass, rarity] of Object.entries(RARITY_CSS_CLASSES)) {
-    if (cls.includes(cssClass)) return rarity;
-  }
-  const text = row.textContent ?? '';
-  for (const [pattern, rarity] of RARITY_PATTERNS) {
-    if (pattern.test(text)) return rarity;
+    for (const [keyword, rarity] of RARITY_CSS) {
+      if (combined.includes(keyword)) return rarity;
+    }
+    current = current.parentElement;
   }
   return 'common';
 }
 
-async function fetchCharacterAddons(characterName: string): Promise<BuildOption[]> {
-  try {
-    // Try the character's main page first
-    const pageName = characterName.replace(/ /g, '_');
-    const data = await wikiQuery<WikiParseResponse>({
-      action: 'parse',
-      page: pageName,
-      prop: 'text',
-      disablelimitreport: '1',
-      disableeditsection: '1',
-    });
+// ─── Survivor item add-ons ────────────────────────────────────────────────────
 
-    const html = data.parse?.text?.['*'] ?? '';
-    if (!html) return [];
+/**
+ * For survivors, add-ons are per-item, not per-character.
+ * Maps item categories to their wiki page for addon fetching.
+ */
+const ITEM_ADDON_PAGES: Record<string, string> = {
+  Medkit: 'Med-Kit',
+  Toolbox: 'Toolbox',
+  Flashlight: 'Flashlight',
+  Map: 'Map',
+  Key: 'Key',
+};
 
-    return parseAddonsFromHtml(html);
-  } catch (e) {
-    console.warn(`[BuildData] Failed to fetch addons for ${characterName}:`, e);
-    return [];
-  }
+async function fetchItemAddons(itemName: string): Promise<BuildOption[]> {
+  // Find the item category
+  const item = SURVIVOR_ITEMS.find((i) => i.name === itemName);
+  const category = item?.category;
+  if (!category) return [];
+
+  const pageName = ITEM_ADDON_PAGES[category];
+  if (!pageName) return [];
+
+  // Fetch the item page's add-on section
+  const sectionsData = await wikiQuery<WikiSectionsResponse>({
+    action: 'parse',
+    page: pageName,
+    prop: 'sections',
+  });
+
+  if (sectionsData.error || !sectionsData.parse?.sections) return [];
+
+  const addonSection = sectionsData.parse.sections.find(
+    (s) => /^add[\s-]?ons?$/i.test(s.line),
+  );
+  if (!addonSection) return [];
+
+  const htmlData = await wikiQuery<WikiSectionHtmlResponse>({
+    action: 'parse',
+    page: pageName,
+    prop: 'text',
+    section: addonSection.index,
+    disablelimitreport: '1',
+    disableeditsection: '1',
+  });
+
+  const html = htmlData.parse?.text?.['*'] ?? '';
+  return html ? parseAddonSection(html) : [];
 }
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export const BuildDataService = {
   /**
-   * Get add-ons for a specific character. Cached for 7 days.
-   * Returns empty array if wiki is unreachable.
+   * Get add-ons for a killer character. Cached for 7 days.
    */
-  async getAddons(characterName: string): Promise<BuildOption[]> {
-    const cacheKey = CACHE_PREFIX + characterName;
+  async getKillerAddons(characterName: string): Promise<BuildOption[]> {
+    const cacheKey = CACHE_PREFIX + 'killer_' + characterName;
     const cached = StorageService.cacheFresh<BuildOption[]>(cacheKey, TTL.PERK);
     if (cached) return cached;
 
-    if (inflight.has(characterName)) return inflight.get(characterName)!;
+    if (inflight.has(cacheKey)) return inflight.get(cacheKey)!;
 
-    const promise = fetchCharacterAddons(characterName).then((addons) => {
-      if (addons.length) {
-        StorageService.cacheSet(cacheKey, addons);
-      }
-      inflight.delete(characterName);
+    const promise = fetchKillerAddons(characterName).then((addons) => {
+      if (addons.length) StorageService.cacheSet(cacheKey, addons);
+      inflight.delete(cacheKey);
       return addons;
     });
-    inflight.set(characterName, promise);
+    inflight.set(cacheKey, promise);
     return promise;
   },
 
-  invalidate(characterName: string): void {
-    StorageService.cacheRemove(CACHE_PREFIX + characterName);
+  /**
+   * Get add-ons for a survivor's selected item. Cached for 7 days.
+   */
+  async getItemAddons(itemName: string): Promise<BuildOption[]> {
+    if (!itemName) return [];
+    const cacheKey = CACHE_PREFIX + 'item_' + itemName;
+    const cached = StorageService.cacheFresh<BuildOption[]>(cacheKey, TTL.PERK);
+    if (cached) return cached;
+
+    if (inflight.has(cacheKey)) return inflight.get(cacheKey)!;
+
+    const promise = fetchItemAddons(itemName).then((addons) => {
+      if (addons.length) StorageService.cacheSet(cacheKey, addons);
+      inflight.delete(cacheKey);
+      return addons;
+    });
+    inflight.set(cacheKey, promise);
+    return promise;
+  },
+
+  invalidate(key: string): void {
+    StorageService.cacheRemove(CACHE_PREFIX + key);
   },
 };

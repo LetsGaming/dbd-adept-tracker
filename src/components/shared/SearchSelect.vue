@@ -1,84 +1,71 @@
 <template>
   <div class="search-select" :class="{ 'search-select-open': isOpen }">
-    <!-- Trigger / display -->
+    <!-- Trigger -->
     <button
-      ref="trigger"
       class="search-select-trigger"
       :title="modelValue || placeholder"
-      @click="toggle"
+      @click.stop="toggle"
     >
-      <span
-        v-if="modelValue"
-        class="search-select-value"
-        :style="selectedStyle"
-      >{{ modelValue }}</span>
+      <span v-if="modelValue" class="search-select-value" :style="selectedStyle">{{ modelValue }}</span>
       <span v-else class="search-select-placeholder">{{ placeholder }}</span>
       <span class="search-select-arrow">▾</span>
     </button>
 
-    <!-- Dropdown -->
-    <Teleport to="body">
-      <div
-        v-if="isOpen"
-        class="search-select-overlay"
-        @click="close"
-      />
-    </Teleport>
-    <div v-if="isOpen" ref="dropdown" class="search-select-dropdown">
-      <!-- Search input -->
-      <div class="search-select-search-wrap">
-        <input
-          ref="searchInput"
-          v-model="query"
-          class="search-select-search"
-          placeholder="Suchen…"
-          @keydown.escape="close"
-          @keydown.enter.prevent="selectFirst"
-          @keydown.down.prevent="highlightNext"
-          @keydown.up.prevent="highlightPrev"
-        />
-      </div>
+    <!-- Overlay + Dropdown (same stacking context, no Teleport) -->
+    <template v-if="isOpen">
+      <div class="search-select-overlay" @mousedown="close" />
+      <div class="search-select-dropdown" @mousedown.stop>
+        <!-- Search -->
+        <div class="search-select-search-wrap">
+          <input
+            ref="searchInput"
+            v-model="query"
+            class="search-select-search"
+            placeholder="Suchen…"
+            @keydown.escape="close"
+            @keydown.enter.prevent="selectHighlighted"
+            @keydown.down.prevent="moveHighlight(1)"
+            @keydown.up.prevent="moveHighlight(-1)"
+          />
+        </div>
 
-      <!-- Options list -->
-      <div class="search-select-list">
-        <!-- Clear option -->
-        <button
-          v-if="modelValue"
-          class="search-select-option search-select-clear"
-          @click="select('')"
-        >✕ Auswahl aufheben</button>
+        <!-- Options -->
+        <div class="search-select-list">
+          <!-- Clear -->
+          <button
+            v-if="modelValue"
+            class="search-select-option search-select-clear"
+            @mousedown.prevent
+            @click="select('')"
+          >✕ Auswahl aufheben</button>
 
-        <!-- Grouped options -->
-        <template v-if="groupedFiltered.length">
-          <template v-for="group in groupedFiltered" :key="group.label">
-            <div v-if="group.label" class="search-select-group-label">
-              {{ group.label }}
-            </div>
-            <button
-              v-for="(opt, i) in group.items"
-              :key="opt.name"
-              class="search-select-option"
-              :class="{ 'search-select-option-active': opt.name === modelValue, 'search-select-option-highlighted': isHighlighted(group.label, i) }"
-              @click="select(opt.name)"
-            >
-              <span
-                class="search-select-rarity-dot"
-                :style="{ background: rarityColor(opt.rarity) }"
-              />
-              <span class="search-select-option-text">{{ opt.name }}</span>
-            </button>
+          <template v-if="groupedFiltered.length">
+            <template v-for="group in groupedFiltered" :key="group.label">
+              <div v-if="group.label" class="search-select-group-label">{{ group.label }}</div>
+              <button
+                v-for="opt in group.items"
+                :key="opt.name"
+                class="search-select-option"
+                :class="{
+                  'search-select-option-active': opt.name === modelValue,
+                  'search-select-option-highlighted': flatFiltered[highlightIdx]?.name === opt.name,
+                }"
+                @mousedown.prevent
+                @click="select(opt.name)"
+              >
+                <span class="search-select-rarity-dot" :style="{ background: rarityColor(opt.rarity) }" />
+                <span class="search-select-option-text">{{ opt.name }}</span>
+              </button>
+            </template>
           </template>
-        </template>
 
-        <!-- Loading / empty -->
-        <div v-else-if="loading" class="search-select-empty">
-          <span class="animate-spin inline-block">⟳</span> Lade…
-        </div>
-        <div v-else class="search-select-empty">
-          Keine Treffer
+          <div v-else-if="loading" class="search-select-empty">
+            <span class="animate-spin inline-block">⟳</span> Lade…
+          </div>
+          <div v-else class="search-select-empty">Keine Treffer</div>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -164,7 +151,7 @@ export default defineComponent({
       this.close();
     },
 
-    selectFirst(): void {
+    selectHighlighted(): void {
       const flat = this.flatFiltered;
       if (this.highlightIdx >= 0 && this.highlightIdx < flat.length) {
         this.select(flat[this.highlightIdx].name);
@@ -173,22 +160,10 @@ export default defineComponent({
       }
     },
 
-    highlightNext(): void {
+    moveHighlight(delta: number): void {
       const max = this.flatFiltered.length - 1;
-      this.highlightIdx = Math.min(this.highlightIdx + 1, max);
-    },
-
-    highlightPrev(): void {
-      this.highlightIdx = Math.max(this.highlightIdx - 1, 0);
-    },
-
-    isHighlighted(groupLabel: string, itemIndex: number): boolean {
-      let flatIdx = 0;
-      for (const g of this.groupedFiltered) {
-        if (g.label === groupLabel) return flatIdx + itemIndex === this.highlightIdx;
-        flatIdx += g.items.length;
-      }
-      return false;
+      if (max < 0) return;
+      this.highlightIdx = Math.max(0, Math.min(this.highlightIdx + delta, max));
     },
 
     rarityColor(rarity: Rarity): string {
@@ -202,6 +177,7 @@ export default defineComponent({
 .search-select {
   position: relative;
 }
+
 .search-select-trigger {
   width: 100%;
   display: flex;
@@ -224,6 +200,7 @@ export default defineComponent({
 .search-select-open .search-select-trigger {
   border-color: var(--color-accent);
 }
+
 .search-select-value {
   flex: 1;
   font-weight: 600;
@@ -239,17 +216,21 @@ export default defineComponent({
   color: var(--color-text-muted);
   font-size: 10px;
 }
+
+/* Overlay: fixed fullscreen, closes dropdown on click */
 .search-select-overlay {
   position: fixed;
   inset: 0;
-  z-index: 999;
+  z-index: 900;
 }
+
+/* Dropdown: positioned relative to trigger, above overlay */
 .search-select-dropdown {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 1000;
+  z-index: 901;
   border-radius: 10px;
   border: 1px solid var(--color-border-medium);
   background: var(--color-bg-elevated);
@@ -257,6 +238,7 @@ export default defineComponent({
   overflow: hidden;
   min-width: 220px;
 }
+
 .search-select-search-wrap {
   padding: 8px;
   border-bottom: 1px solid var(--color-border-subtle);
@@ -274,11 +256,14 @@ export default defineComponent({
 .search-select-search:focus {
   border-color: var(--color-accent);
 }
+
 .search-select-list {
-  max-height: 240px;
+  max-height: 200px;
   overflow-y: auto;
   padding: 4px 0;
+  overscroll-behavior: contain;
 }
+
 .search-select-group-label {
   padding: 6px 12px 3px;
   font-size: 10px;
@@ -287,6 +272,7 @@ export default defineComponent({
   letter-spacing: 0.1em;
   color: var(--color-text-muted);
 }
+
 .search-select-option {
   display: flex;
   align-items: center;
