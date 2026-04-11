@@ -446,6 +446,13 @@
       </span>
       <button
         class="rounded-md border border-[#2a475e] text-[#8f98a0] text-[11px] px-3 py-1.5 font-semibold hover:border-[#66c0f4] hover:text-[#66c0f4] min-h-[36px]"
+        title="DLC-Besitz importieren"
+        @click="showOwnershipImport = !showOwnershipImport"
+      >
+        📦
+      </button>
+      <button
+        class="rounded-md border border-[#2a475e] text-[#8f98a0] text-[11px] px-3 py-1.5 font-semibold hover:border-[#66c0f4] hover:text-[#66c0f4] min-h-[36px]"
         title="Achievements synchronisieren"
         @click="$emit('sync')"
       >
@@ -467,6 +474,13 @@
       </button>
     </div>
 
+    <!-- ═══ OWNERSHIP IMPORT WIZARD ═══ -->
+    <OwnershipImport
+      v-if="showOwnershipImport && steam.hasCreds"
+      class="mb-3"
+      @close="showOwnershipImport = false"
+    />
+
     <!-- ═══ SYNCING / DONE / ERROR ═══ -->
     <div
       v-else-if="['syncing', 'done', 'error'].includes(steam.phase)"
@@ -486,20 +500,36 @@
     </div>
 
     <!-- ═══ NOT CONNECTED ═══ -->
-    <button
-      v-else-if="!steam.hasCreds && steam.phase === 'idle'"
-      class="w-full py-4 rounded-xl border border-[#66c0f4]/25 text-[#66c0f4] font-semibold text-sm flex items-center justify-center gap-2.5 mb-3 hover:brightness-110"
-      style="background: linear-gradient(135deg, #1b2838, #2a475e)"
-      @click="openWizard"
-    >
-      <span class="text-xl">🎮</span> Steam verbinden
-    </button>
+    <div v-else-if="!steam.hasCreds && steam.phase === 'idle'" class="space-y-2 mb-3">
+      <button
+        class="w-full py-4 rounded-xl border border-[#66c0f4]/25 text-[#66c0f4] font-semibold text-sm flex items-center justify-center gap-2.5 hover:brightness-110"
+        style="background: linear-gradient(135deg, #1b2838, #2a475e)"
+        @click="openWizard"
+      >
+        <span class="text-xl">🎮</span> Steam verbinden
+      </button>
+      <button
+        class="w-full py-3 rounded-xl border border-[#2a475e] text-[#8f98a0] font-semibold text-xs flex items-center justify-center gap-2 hover:border-[#66c0f4] hover:text-[#66c0f4]"
+        style="background: #111d2c"
+        @click="showOwnershipImport = !showOwnershipImport"
+      >
+        <span>📦</span> DLC-Besitz importieren
+      </button>
+    </div>
+
+    <!-- ═══ OWNERSHIP IMPORT (non-connected) ═══ -->
+    <OwnershipImport
+      v-if="showOwnershipImport && !steam.hasCreds"
+      class="mb-3"
+      @close="showOwnershipImport = false"
+    />
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent } from "vue";
 import { useSteamStore } from "@/stores";
+import OwnershipImport from "@/components/steam/OwnershipImport.vue";
 
 type TestState = "idle" | "pending" | "ok" | "error";
 type ErrorType = "key" | "private" | "network" | "unknown";
@@ -515,6 +545,7 @@ const STEP_LABELS: Record<number, string> = {
 
 export default defineComponent({
   name: "SteamWidget",
+  components: { OwnershipImport },
   emits: ["sync", "force-sync"],
 
   data() {
@@ -527,6 +558,7 @@ export default defineComponent({
       testErrorMsg: "",
       testErrorType: "unknown" as ErrorType,
       testSuccessMsg: "",
+      showOwnershipImport: false,
     };
   },
 

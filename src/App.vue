@@ -542,20 +542,7 @@ export default defineComponent({
         }
 
         if (changed.length) this.store.markDoneFromSteam(changed);
-
-        // Sync DLC ownership
-        let ownershipMsg = "";
-        try {
-          const ownedRoles = await this.steam.fetchOwnedRoles();
-          const [marked, unmarked] = this.store.syncOwnershipFromRoles(ownedRoles);
-          if (marked || unmarked) {
-            ownershipMsg = ` | 🎮 ${marked}↑ ${unmarked}↓`;
-          }
-        } catch (e) {
-          console.warn("[Steam] DLC ownership sync failed:", (e as Error).message);
-        }
-
-        this.steam.setPhase("done", `✅ ${changed.length} Adepts${ownershipMsg}`);
+        this.steam.setPhase("done", `✅ ${changed.length} New Adepts`);
       } catch (e) {
         this.steam.setPhase("error", `✗ ${(e as Error).message}`);
       }

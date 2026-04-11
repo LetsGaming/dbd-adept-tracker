@@ -29,9 +29,15 @@
           {{ character.name }}
           <span v-if="progress.priority" class="text-xs">⭐</span>
         </div>
-        <div class="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
-          {{ character.role }}
-          <span v-if="!progress.owned" class="ml-1 opacity-60" title="Nicht besitzt">🚫</span>
+        <div class="text-xs text-[var(--color-text-muted)] mt-0.5 truncate flex items-center gap-1">
+          <span class="truncate">{{ character.role }}</span>
+          <button
+            v-if="!readOnly"
+            class="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+            :title="progress.owned ? 'Besitzt — klicken zum Entfernen' : 'Nicht besitzt — klicken zum Hinzufügen'"
+            @click.stop="emit('toggle-owned', character.id)"
+          >{{ progress.owned ? '🎮' : '🚫' }}</button>
+          <span v-else-if="!progress.owned" class="shrink-0 opacity-60">🚫</span>
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0 flex-wrap">

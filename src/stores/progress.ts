@@ -17,7 +17,7 @@ import {
   DEFAULT_PROGRESS,
   DEFAULT_META,
 } from "@/data";
-import { FREE_ROLES } from "@/data/dlc-map";
+import { DLC_APPID_TO_ROLE, FREE_ROLES } from "@/data/dlc-map";
 import { StorageService, RosterService } from "@/services";
 
 const STORAGE_KEYS = {
@@ -362,37 +362,34 @@ export const useProgressStore = defineStore("progress", {
       this._saveProgress();
     },
 
-    setOwned(id: string, owned: boolean): void {
-      if (this.readOnly) return;
-      const prev = resolveProgress(this.progress, id);
-      if (prev.owned !== owned) {
-        this.progress[id] = { ...prev, owned };
-        this._saveProgress();
-      }
-    },
-
     /**
-     * Bulk-sync ownership from a set of owned chapter roles.
-     * Characters whose role is in the set are marked owned; others are not.
-     * Returns [marked, unmarked] counts.
+     * Import ownership from a list of Steam app IDs (from dynamicstore/userdata rgOwnedApps).
+     * Only marks characters as owned — never removes ownership.
+     * Returns the number of characters newly marked as owned.
      */
-    syncOwnershipFromRoles(ownedRoles: Set<string>): [number, number] {
-      if (this.readOnly) return [0, 0];
-      let marked = 0;
-      let unmarked = 0;
-      for (const c of this.allCharacters) {
-        const prev = resolveProgress(this.progress, c.id);
-        const shouldOwn = ownedRoles.has(c.role) || FREE_ROLES.has(c.role);
-        if (shouldOwn && !prev.owned) {
-          this.progress[c.id] = { ...prev, owned: true };
-          marked++;
-        } else if (!shouldOwn && prev.owned) {
-          this.progress[c.id] = { ...prev, owned: false };
-          unmarked++;
+    importOwnershipFromAppIds(ownedAppIds: Set<number>): number {
+      if (this.readOnly) return 0;
+
+      // Build set of owned roles from matched DLC appids + free roles
+      const ownedRoles = new Set<string>(FREE_ROLES);
+      for (const [appId, role] of Object.entries(DLC_APPID_TO_ROLE)) {
+        if (ownedAppIds.has(Number(appId))) {
+          ownedRoles.add(role);
         }
       }
-      if (marked || unmarked) this._saveProgress();
-      return [marked, unmarked];
+
+      let count = 0;
+      for (const c of this.allCharacters) {
+        if (ownedRoles.has(c.role)) {
+          const prev = resolveProgress(this.progress, c.id);
+          if (!prev.owned) {
+            this.progress[c.id] = { ...prev, owned: true };
+            count++;
+          }
+        }
+      }
+      if (count) this._saveProgress();
+      return count;
     },
 
     setNote(id: string, note: string): void {
