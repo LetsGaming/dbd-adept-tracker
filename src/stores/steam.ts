@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import type { SyncPhase, SteamCreds } from "@/types";
 import { StorageService } from "@/services/storage";
+import { DLC_APPID_TO_ROLE, ALL_DLC_APPIDS, FREE_ROLES } from "@/data/dlc-map";
 
 interface SteamState {
   phase: SyncPhase;
@@ -185,6 +186,42 @@ export const useSteamStore = defineStore("steam", {
           msg: "⚠ Vanity-URL — steamid.io nutzen",
         };
       return { valid: false, id: "", msg: "Steam ID64 oder Profil-URL" };
+    },
+
+    /**
+     * Fetches the user's owned games/DLCs via IPlayerService/GetOwnedGames.
+     * Returns the set of chapter role strings the user owns.
+     */
+    async fetchOwnedRoles(): Promise<Set<string>> {
+      const { key, steamId } = this.creds;
+      const url =
+        `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/` +
+        `?key=${encodeURIComponent(key)}` +
+        `&steamid=${encodeURIComponent(steamId)}` +
+        `&include_played_free_games=true` +
+        `&include_free_sub=true` +
+        `&format=json`;
+
+      const d = (await this.proxyFetch(url)) as {
+        response?: { games?: Array<{ appid: number }> };
+      };
+
+      const ownedAppIds = new Set(
+        (d.response?.games ?? []).map((g) => g.appid),
+      );
+
+      // Always include free chapter roles
+      const roles = new Set<string>(FREE_ROLES);
+
+      // Check which DLC app IDs the user owns
+      for (const appId of ALL_DLC_APPIDS) {
+        if (ownedAppIds.has(appId)) {
+          const role = DLC_APPID_TO_ROLE[appId];
+          if (role) roles.add(role);
+        }
+      }
+
+      return roles;
     },
   },
 });

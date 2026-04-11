@@ -24,6 +24,7 @@
       @add-try="(id: string, d: number) => store.addTry(id, d)"
       @open-perk="openPerkName = $event"
       @toggle-priority="store.togglePriority($event)"
+      @toggle-owned="store.toggleOwned($event)"
       @update-note="(id: string, n: string) => store.setNote(id, n)"
     />
 

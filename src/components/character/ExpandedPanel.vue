@@ -10,14 +10,25 @@
     <!-- Perks header -->
     <div class="flex items-center justify-between mt-3 mb-2.5">
       <SectionLabel>Perks</SectionLabel>
-      <button
-        v-if="!readOnly"
-        class="rounded-lg border px-2.5 py-1 text-base transition-all"
-        :class="progress.priority
-          ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/25 text-[var(--color-accent)]'
-          : 'bg-[var(--color-bg-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'"
-        @click="emit('toggle-priority')"
-      >{{ progress.priority ? '⭐' : '☆' }}</button>
+      <div class="flex gap-1.5">
+        <button
+          v-if="!readOnly"
+          class="rounded-lg border px-2.5 py-1 text-base transition-all"
+          :class="progress.owned
+            ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/25 text-[var(--color-accent)]'
+            : 'bg-[var(--color-bg-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'"
+          title="Besitzt"
+          @click="emit('toggle-owned')"
+        >{{ progress.owned ? '🎮' : '🚫' }}</button>
+        <button
+          v-if="!readOnly"
+          class="rounded-lg border px-2.5 py-1 text-base transition-all"
+          :class="progress.priority
+            ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/25 text-[var(--color-accent)]'
+            : 'bg-[var(--color-bg-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'"
+          @click="emit('toggle-priority')"
+        >{{ progress.priority ? '⭐' : '☆' }}</button>
+      </div>
     </div>
 
     <!-- Perk buttons -->
@@ -148,6 +159,7 @@ const emit = defineEmits<{
   'add-try': [delta: number];
   'open-perk': [name: string];
   'toggle-priority': [];
+  'toggle-owned': [];
   'update-note': [note: string];
 }>();
 

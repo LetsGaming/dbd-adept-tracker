@@ -29,7 +29,10 @@
           {{ character.name }}
           <span v-if="progress.priority" class="text-xs">⭐</span>
         </div>
-        <div class="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">{{ character.role }}</div>
+        <div class="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
+          {{ character.role }}
+          <span v-if="!progress.owned" class="ml-1 opacity-60" title="Nicht besitzt">🚫</span>
+        </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0 flex-wrap">
         <span
@@ -63,6 +66,7 @@
       @add-try="(d: number) => emit('add-try', character.id, d)"
       @open-perk="(n: string) => emit('open-perk', n)"
       @toggle-priority="emit('toggle-priority', character.id)"
+      @toggle-owned="emit('toggle-owned', character.id)"
       @update-note="(n: string) => emit('update-note', character.id, n)"
     />
   </div>
@@ -88,6 +92,7 @@ const emit = defineEmits<{
   'add-try': [id: string, delta: number];
   'open-perk': [name: string];
   'toggle-priority': [id: string];
+  'toggle-owned': [id: string];
   'update-note': [id: string, note: string];
 }>();
 

@@ -17,6 +17,7 @@ import {
   DEFAULT_PROGRESS,
   DEFAULT_META,
 } from "@/data";
+import { FREE_ROLES } from "@/data/dlc-map";
 import { StorageService, RosterService } from "@/services";
 
 const STORAGE_KEYS = {
@@ -359,6 +360,39 @@ export const useProgressStore = defineStore("progress", {
       const prev = resolveProgress(this.progress, id);
       this.progress[id] = { ...prev, owned: !prev.owned };
       this._saveProgress();
+    },
+
+    setOwned(id: string, owned: boolean): void {
+      if (this.readOnly) return;
+      const prev = resolveProgress(this.progress, id);
+      if (prev.owned !== owned) {
+        this.progress[id] = { ...prev, owned };
+        this._saveProgress();
+      }
+    },
+
+    /**
+     * Bulk-sync ownership from a set of owned chapter roles.
+     * Characters whose role is in the set are marked owned; others are not.
+     * Returns [marked, unmarked] counts.
+     */
+    syncOwnershipFromRoles(ownedRoles: Set<string>): [number, number] {
+      if (this.readOnly) return [0, 0];
+      let marked = 0;
+      let unmarked = 0;
+      for (const c of this.allCharacters) {
+        const prev = resolveProgress(this.progress, c.id);
+        const shouldOwn = ownedRoles.has(c.role) || FREE_ROLES.has(c.role);
+        if (shouldOwn && !prev.owned) {
+          this.progress[c.id] = { ...prev, owned: true };
+          marked++;
+        } else if (!shouldOwn && prev.owned) {
+          this.progress[c.id] = { ...prev, owned: false };
+          unmarked++;
+        }
+      }
+      if (marked || unmarked) this._saveProgress();
+      return [marked, unmarked];
     },
 
     setNote(id: string, note: string): void {
