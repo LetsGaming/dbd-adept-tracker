@@ -3,3 +3,4 @@ export { WikiApi } from './wiki';
 export { PerkService } from './perk';
 export { RosterService } from './roster';
 export { renderStatCard } from './statCard';
+export { BuildDataService } from './buildData';
