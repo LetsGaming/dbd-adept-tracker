@@ -140,12 +140,12 @@ export default defineComponent({
       return [
         {
           label: '👤 Survivors',
-          value: `${s.survivorsDone}/${s.survivors.length}`,
+          value: `${s.survivorsDone}/${s.survivorsTotal}`,
           color: 'var(--color-survivor)',
         },
         {
           label: '💀 Killers',
-          value: `${s.killersDone}/${s.killers.length}`,
+          value: `${s.killersDone}/${s.killersTotal}`,
           color: 'var(--color-killer)',
         },
         {

@@ -1,26 +1,42 @@
-import { defineStore } from 'pinia';
+import { defineStore } from "pinia";
 import type {
-  ProgressMap, CharacterProgress, Character, MetaData,
-  UndoEntry, SharePayload, PlaySession,
-} from '@/types';
+  ProgressMap,
+  CharacterProgress,
+  Character,
+  MetaData,
+  UndoEntry,
+  SharePayload,
+  PlaySession,
+} from "@/types";
 import {
-  TabId, PageId, FilterId, StatsSortCol, SortDir,
-  UndoType, Side, Difficulty,
-} from '@/types';
+  TabId,
+  PageId,
+  FilterId,
+  StatsSortCol,
+  SortDir,
+  UndoType,
+  Side,
+  Difficulty,
+} from "@/types";
 import {
-  SEED_SURVIVORS, SEED_KILLERS, DEFAULT_PROGRESS, DEFAULT_META,
-  MILESTONES, STREAK_MILESTONES, SESSION_GAP_MS,
-} from '@/data';
-import { DLC_APPID_TO_ROLE, FREE_ROLES } from '@/data/dlc-map';
-import { StorageService, RosterService } from '@/services';
-import { useSteamStore } from './steam';
+  SEED_SURVIVORS,
+  SEED_KILLERS,
+  DEFAULT_PROGRESS,
+  DEFAULT_META,
+  MILESTONES,
+  STREAK_MILESTONES,
+  SESSION_GAP_MS,
+} from "@/data";
+import { DLC_APPID_TO_ROLE, FREE_ROLES } from "@/data/dlc-map";
+import { StorageService, RosterService } from "@/services";
+import { useSteamStore } from "./steam";
 
 const STORAGE_KEYS = {
-  progress: 'dbd_progress',
-  meta: 'dbd_meta',
-  undo: 'dbd_undo',
-  uiState: 'dbd_ui_state',
-  customOrder: 'dbd_custom_order',
+  progress: "dbd_progress",
+  meta: "dbd_meta",
+  undo: "dbd_undo",
+  uiState: "dbd_ui_state",
+  customOrder: "dbd_custom_order",
 } as const;
 
 const MAX_UNDO = 20;
@@ -68,10 +84,12 @@ interface ProgressState {
   pendingDifficultyId: string | null;
 }
 
-export const useProgressStore = defineStore('progress', {
+export const useProgressStore = defineStore("progress", {
   state: (): ProgressState => {
     const ui =
-      StorageService.get<Record<string, string | boolean>>(STORAGE_KEYS.uiState) ?? {};
+      StorageService.get<Record<string, string | boolean>>(
+        STORAGE_KEYS.uiState,
+      ) ?? {};
     return {
       progress: StorageService.get<ProgressMap>(STORAGE_KEYS.progress) ?? {},
       meta: {
@@ -84,7 +102,7 @@ export const useProgressStore = defineStore('progress', {
       tab: (ui.tab as TabId) ?? TabId.Survivor,
       page: (ui.page as PageId) ?? PageId.Tracker,
       filter: (ui.filter as FilterId) ?? FilterId.All,
-      search: (ui.search as string) ?? '',
+      search: (ui.search as string) ?? "",
       activeId: null,
       selectMode: false,
       selectedIds: new Set<string>(),
@@ -95,7 +113,8 @@ export const useProgressStore = defineStore('progress', {
       readOnly: false,
       ownProgress: null,
       customOrder:
-        StorageService.get<Record<string, number>>(STORAGE_KEYS.customOrder) ?? {},
+        StorageService.get<Record<string, number>>(STORAGE_KEYS.customOrder) ??
+        {},
       pendingMilestone: null,
       pendingDifficultyId: null,
     };
@@ -145,7 +164,9 @@ export const useProgressStore = defineStore('progress', {
         list = list.filter((c) => resolveProgress(this.progress, c.id).done);
       } else if (this.filter === FilterId.Todo) {
         list = list.filter(
-          (c) => !resolveProgress(this.progress, c.id).done && steam.hasAdept(c.name),
+          (c) =>
+            !resolveProgress(this.progress, c.id).done &&
+            steam.hasAdept(c.name),
         );
       } else if (this.filter === FilterId.Playable) {
         list = list.filter((c) => {
@@ -164,11 +185,21 @@ export const useProgressStore = defineStore('progress', {
       ).length;
     },
 
+    survivorsTotal(): number {
+      const steam = useSteamStore();
+      return this.survivors.filter((c) => steam.hasAdept(c.name)).length;
+    },
+
     killersDone(): number {
       const steam = useSteamStore();
       return this.killers.filter(
         (c) => this.progress[c.id]?.done && steam.hasAdept(c.name),
       ).length;
+    },
+
+    killersTotal(): number {
+      const steam = useSteamStore();
+      return this.killers.filter((c) => steam.hasAdept(c.name)).length;
     },
 
     totalDone(): number {
@@ -194,7 +225,8 @@ export const useProgressStore = defineStore('progress', {
       const done = this.allCharacters.filter((c) => this.progress[c.id]?.done);
       if (!done.length) return 0;
       const total = done.reduce(
-        (sum, c) => sum + (this.progress[c.id]?.tries ?? 1), 0,
+        (sum, c) => sum + (this.progress[c.id]?.tries ?? 1),
+        0,
       );
       return Math.round((total / done.length) * 10) / 10;
     },
@@ -205,7 +237,8 @@ export const useProgressStore = defineStore('progress', {
       );
       if (!rated.length) return 0;
       const total = rated.reduce(
-        (sum, c) => sum + (this.progress[c.id]!.difficulty ?? 0), 0,
+        (sum, c) => sum + (this.progress[c.id]!.difficulty ?? 0),
+        0,
       );
       return Math.round((total / rated.length) * 10) / 10;
     },
@@ -227,13 +260,13 @@ export const useProgressStore = defineStore('progress', {
         .map((c) => this.progress[c.id]!.doneAt!)
         .sort();
 
-      if (doneWithTs.length < 2) return '—';
+      if (doneWithTs.length < 2) return "—";
 
       const span = doneWithTs[doneWithTs.length - 1] - doneWithTs[0];
       const rate = doneWithTs.length / (span / (24 * 3600_000));
       const rem = eligible.length - doneWithTs.length;
 
-      if (rate <= 0 || rem <= 0) return rem <= 0 ? 'Fertig! 🎉' : '—';
+      if (rate <= 0 || rem <= 0) return rem <= 0 ? "Fertig! 🎉" : "—";
 
       const daysLeft = Math.ceil(rem / rate);
       if (daysLeft > 365) return `~${Math.round(daysLeft / 30)} Mon.`;
@@ -247,8 +280,10 @@ export const useProgressStore = defineStore('progress', {
      */
     sessions(): PlaySession[] {
       const allAttempts: Array<{
-        characterId: string; characterName: string;
-        success: boolean; ts: number;
+        characterId: string;
+        characterName: string;
+        success: boolean;
+        ts: number;
       }> = [];
 
       for (const c of this.allCharacters) {
@@ -281,7 +316,13 @@ export const useProgressStore = defineStore('progress', {
         if (a.ts - current.endTs > SESSION_GAP_MS) {
           finalizeSession(current);
           sessions.push(current);
-          current = { startTs: a.ts, endTs: a.ts, attempts: [a], completed: [], failed: [] };
+          current = {
+            startTs: a.ts,
+            endTs: a.ts,
+            attempts: [a],
+            completed: [],
+            failed: [],
+          };
         } else {
           current.endTs = a.ts;
           current.attempts.push(a);
@@ -302,10 +343,10 @@ export const useProgressStore = defineStore('progress', {
         `Streak: ${s.meta.streak} 🔥 | Best: ${s.meta.bestStreak}`,
         `Ø Tries: ${s.avgTries} | Remaining: ${s.remaining}`,
       ];
-      if (s.estimatedCompletion !== '—') {
+      if (s.estimatedCompletion !== "—") {
         lines.push(`Est. completion: ${s.estimatedCompletion}`);
       }
-      return lines.join('\n');
+      return lines.join("\n");
     },
   },
 
@@ -337,9 +378,13 @@ export const useProgressStore = defineStore('progress', {
 
     _saveUI(): void {
       StorageService.set(STORAGE_KEYS.uiState, {
-        tab: this.tab, page: this.page, filter: this.filter,
-        search: this.search, statsSort: this.statsSort,
-        statsSortDir: this.statsSortDir, groupByChapter: this.groupByChapter,
+        tab: this.tab,
+        page: this.page,
+        filter: this.filter,
+        search: this.search,
+        statsSort: this.statsSort,
+        statsSortDir: this.statsSortDir,
+        groupByChapter: this.groupByChapter,
         ownedOnly: this.ownedOnly,
       });
     },
@@ -393,13 +438,23 @@ export const useProgressStore = defineStore('progress', {
 
     // ─── UI mutations ─────────────────────────────────────────────
 
-    setSearch(q: string): void { this.search = q; this._saveUI(); },
-    setFilter(f: FilterId): void { this.filter = f; this._saveUI(); },
-    setOwnedOnly(v: boolean): void { this.ownedOnly = v; this._saveUI(); },
+    setSearch(q: string): void {
+      this.search = q;
+      this._saveUI();
+    },
+    setFilter(f: FilterId): void {
+      this.filter = f;
+      this._saveUI();
+    },
+    setOwnedOnly(v: boolean): void {
+      this.ownedOnly = v;
+      this._saveUI();
+    },
 
     toggleSort(col: StatsSortCol): void {
       if (this.statsSort === col) {
-        this.statsSortDir = this.statsSortDir === SortDir.Asc ? SortDir.Desc : SortDir.Asc;
+        this.statsSortDir =
+          this.statsSortDir === SortDir.Asc ? SortDir.Desc : SortDir.Asc;
       } else {
         this.statsSort = col;
         this.statsSortDir = SortDir.Asc;
@@ -408,7 +463,11 @@ export const useProgressStore = defineStore('progress', {
     },
 
     sortIcon(col: StatsSortCol): string {
-      return this.statsSort === col ? (this.statsSortDir === SortDir.Asc ? '↑' : '↓') : '';
+      return this.statsSort === col
+        ? this.statsSortDir === SortDir.Asc
+          ? "↑"
+          : "↓"
+        : "";
     },
 
     // ─── Progress mutations ───────────────────────────────────────
@@ -418,7 +477,7 @@ export const useProgressStore = defineStore('progress', {
      * When marking done: triggers milestone check, difficulty prompt, lastPlayedAt.
      * When unmarking: the caller should show an undo-window toast instead of instant unmark.
      */
-    toggleDone(id: string): 'marked' | 'unmarked' | null {
+    toggleDone(id: string): "marked" | "unmarked" | null {
       if (this.readOnly) return null;
       this._pushUndo(UndoType.ToggleDone, id);
       const prev = resolveProgress(this.progress, id);
@@ -440,17 +499,20 @@ export const useProgressStore = defineStore('progress', {
         this._saveMeta();
         this._checkMilestones();
         this.pendingDifficultyId = id;
-        return 'marked';
+        return "marked";
       } else {
         this.meta.streak = 0;
         const attempts = [...prev.attempts];
         for (let i = attempts.length - 1; i >= 0; i--) {
-          if (attempts[i].success) { attempts.splice(i, 1); break; }
+          if (attempts[i].success) {
+            attempts.splice(i, 1);
+            break;
+          }
         }
         this.progress[id] = { ...prev, done: false, doneAt: null, attempts };
         this._saveProgress();
         this._saveMeta();
-        return 'unmarked';
+        return "unmarked";
       }
     },
 
@@ -483,7 +545,10 @@ export const useProgressStore = defineStore('progress', {
         const attempts = [...prev.attempts];
         if (delta < 0 && newTries < prev.tries) {
           for (let i = attempts.length - 1; i >= 0; i--) {
-            if (!attempts[i].success) { attempts.splice(i, 1); break; }
+            if (!attempts[i].success) {
+              attempts.splice(i, 1);
+              break;
+            }
           }
         }
         this.progress[id] = { ...prev, tries: newTries, attempts };
@@ -516,7 +581,10 @@ export const useProgressStore = defineStore('progress', {
       for (const c of this.allCharacters) {
         if (ownedRoles.has(c.role)) {
           const prev = resolveProgress(this.progress, c.id);
-          if (!prev.owned) { this.progress[c.id] = { ...prev, owned: true }; count++; }
+          if (!prev.owned) {
+            this.progress[c.id] = { ...prev, owned: true };
+            count++;
+          }
         }
       }
       if (count) this._saveProgress();
@@ -530,7 +598,7 @@ export const useProgressStore = defineStore('progress', {
       this._saveProgress();
     },
 
-    saveBuild(id: string, build: CharacterProgress['build']): void {
+    saveBuild(id: string, build: CharacterProgress["build"]): void {
       if (this.readOnly) return;
       const prev = resolveProgress(this.progress, id);
       this.progress[id] = { ...prev, build };
@@ -552,9 +620,15 @@ export const useProgressStore = defineStore('progress', {
           const prev = resolveProgress(this.progress, id);
           const tries = Math.max(prev.tries, 1);
           this.progress[id] = {
-            ...prev, done: true, doneAt: ts || Date.now(), tries,
+            ...prev,
+            done: true,
+            doneAt: ts || Date.now(),
+            tries,
             lastPlayedAt: ts || Date.now(),
-            attempts: [...prev.attempts, { ts: ts || Date.now(), success: true }],
+            attempts: [
+              ...prev.attempts,
+              { ts: ts || Date.now(), success: true },
+            ],
           };
         }
       }
@@ -564,13 +638,16 @@ export const useProgressStore = defineStore('progress', {
     switchTab(tab: TabId): void {
       this.tab = tab;
       this.activeId = null;
-      this.search = '';
+      this.search = "";
       this.selectedIds = new Set();
       this.selectMode = false;
       this._saveUI();
     },
 
-    setPage(page: PageId): void { this.page = page; this._saveUI(); },
+    setPage(page: PageId): void {
+      this.page = page;
+      this._saveUI();
+    },
 
     /**
      * Smart random pick: avoids recent picks, weights priority chars,
@@ -578,9 +655,11 @@ export const useProgressStore = defineStore('progress', {
      */
     randomPick(): Character | null {
       const base =
-        this.tab === TabId.Killer ? this.killers
-        : this.tab === TabId.Survivor ? this.survivors
-        : this.allCharacters;
+        this.tab === TabId.Killer
+          ? this.killers
+          : this.tab === TabId.Survivor
+            ? this.survivors
+            : this.allCharacters;
 
       const pool = base.filter(
         (c) => !resolveProgress(this.progress, c.id).done,
@@ -609,8 +688,9 @@ export const useProgressStore = defineStore('progress', {
       const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
 
       // Track recent picks
-      const recentPicks = [...(this.meta.recentPicks ?? []), pick.id]
-        .slice(-MAX_RECENT_PICKS);
+      const recentPicks = [...(this.meta.recentPicks ?? []), pick.id].slice(
+        -MAX_RECENT_PICKS,
+      );
       this.meta.recentPicks = recentPicks;
       this._saveMeta();
 
@@ -633,8 +713,11 @@ export const useProgressStore = defineStore('progress', {
         const prev = resolveProgress(this.progress, id);
         if (!prev.done) {
           this.progress[id] = {
-            ...prev, done: true, doneAt: Date.now(),
-            tries: Math.max(prev.tries, 1), lastPlayedAt: Date.now(),
+            ...prev,
+            done: true,
+            doneAt: Date.now(),
+            tries: Math.max(prev.tries, 1),
+            lastPlayedAt: Date.now(),
           };
           count++;
         }
@@ -650,7 +733,13 @@ export const useProgressStore = defineStore('progress', {
       const count = this.selectedIds.size;
       for (const id of this.selectedIds) {
         const prev = resolveProgress(this.progress, id);
-        this.progress[id] = { ...prev, done: false, doneAt: null, tries: 0, difficulty: null };
+        this.progress[id] = {
+          ...prev,
+          done: false,
+          doneAt: null,
+          tries: 0,
+          difficulty: null,
+        };
       }
       this.selectedIds = new Set();
       this.selectMode = false;
@@ -667,13 +756,15 @@ export const useProgressStore = defineStore('progress', {
       const [moved] = ordered.splice(fromIdx, 1);
       ordered.splice(toIdx, 0, moved);
       const order: Record<string, number> = {};
-      ordered.forEach((c, i) => { order[c.id] = i; });
+      ordered.forEach((c, i) => {
+        order[c.id] = i;
+      });
       this.customOrder = order;
       StorageService.set(STORAGE_KEYS.customOrder, order);
     },
 
     generateShareData(): string {
-      const p: SharePayload['p'] = {};
+      const p: SharePayload["p"] = {};
       for (const [id, v] of Object.entries(this.progress)) {
         if (v?.done || v?.tries) {
           p[id] = { d: v.done ? 1 : 0, t: v.tries || 0 };
@@ -690,15 +781,24 @@ export const useProgressStore = defineStore('progress', {
         this.readOnly = true;
         this.progress = {};
         for (const [id, v] of Object.entries(data.p)) {
-          this.progress[id] = { ...DEFAULT_PROGRESS, done: !!v.d, tries: v.t || 0 };
+          this.progress[id] = {
+            ...DEFAULT_PROGRESS,
+            done: !!v.d,
+            tries: v.t || 0,
+          };
         }
         return true;
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     },
 
     exitSharedView(): void {
       if (!this.readOnly) return;
-      this.progress = this.ownProgress ?? StorageService.get<ProgressMap>(STORAGE_KEYS.progress) ?? {};
+      this.progress =
+        this.ownProgress ??
+        StorageService.get<ProgressMap>(STORAGE_KEYS.progress) ??
+        {};
       this.ownProgress = null;
       this.readOnly = false;
     },
