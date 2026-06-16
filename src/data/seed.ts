@@ -314,6 +314,13 @@ export const SEED_KILLERS: readonly Character[] = [
     img: "K42_TheFirst_Portrait.png",
     perks: ["Turn Back the Clock", "Secret Project", "Hex: Hive Mind"],
   },
+  {
+    id: "slasher",
+    name: "The Slasher",
+    role: "Jason",
+    img: "K43_TheSlasher_Portrait.png",
+    perks: ["Hex: Scared To Death", "Silent Shadow", "Rampage"],
+  }
 ] as const;
 
 export const SEED_SURVIVORS: readonly Character[] = [
