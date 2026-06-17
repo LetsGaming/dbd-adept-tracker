@@ -91,13 +91,13 @@ export default defineComponent({
           id: TabId.Survivor,
           icon: '👤',
           label: 'Survivors',
-          count: `${this.store.survivorsDone}/${this.store.survivors.length}`,
+          count: `${this.store.survivorsDone}/${this.store.survivorsTotal}`,
         },
         {
           id: TabId.Killer,
           icon: '💀',
           label: 'Killers',
-          count: `${this.store.killersDone}/${this.store.killers.length}`,
+          count: `${this.store.killersDone}/${this.store.killersTotal}`,
         },
         {
           id: TabId.All,

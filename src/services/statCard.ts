@@ -3,7 +3,9 @@ import type { Character, CharacterProgress } from '@/types';
 interface StatCardData {
   survivors: Character[];
   killers: Character[];
+  survivorsTotal: number;
   survivorsDone: number;
+  killersTotal: number;
   killersDone: number;
   totalDone: number;
   totalCount: number;
@@ -57,8 +59,8 @@ export function renderStatCard(data: StatCardData): void {
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
-  const survivorPct = Math.round((data.survivorsDone / data.survivors.length) * 100);
-  const killerPct = Math.round((data.killersDone / data.killers.length) * 100);
+  const survivorPct = Math.round((data.survivorsDone / data.survivorsTotal) * 100);
+  const killerPct = Math.round((data.killersDone / data.killersTotal) * 100);
   const totalPct = data.totalPercent;
 
   // Background
@@ -101,14 +103,14 @@ export function renderStatCard(data: StatCardData): void {
   ctx.stroke();
 
   // Survivor block
-  drawStat(ctx, 'SURVIVORS', `${data.survivorsDone}/${data.survivors.length}`, '#60a5fa', 40, 148);
+  drawStat(ctx, 'SURVIVORS', `${data.survivorsDone}/${data.survivorsTotal}`, '#60a5fa', 40, 148);
   drawBar(ctx, 40, 184, 220, survivorPct, '#3b82f6');
   ctx.fillStyle = '#374151';
   ctx.font = '11px monospace';
   ctx.fillText(`${survivorPct}%`, 268, 191);
 
   // Killer block
-  drawStat(ctx, 'KILLERS', `${data.killersDone}/${data.killers.length}`, '#f87171', 40, 228);
+  drawStat(ctx, 'KILLERS', `${data.killersDone}/${data.killersTotal}`, '#f87171', 40, 228);
   drawBar(ctx, 40, 264, 220, killerPct, '#ef4444');
   ctx.fillStyle = '#374151';
   ctx.font = '11px monospace';

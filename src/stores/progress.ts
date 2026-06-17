@@ -339,7 +339,7 @@ export const useProgressStore = defineStore("progress", {
       const s = this;
       const lines = [
         `DBD Adept Progress: ${s.totalDone}/${s.totalCount} (${s.totalPercent}%)`,
-        `Survivors: ${s.survivorsDone}/${s.survivors.length} | Killers: ${s.killersDone}/${s.killers.length}`,
+        `Survivors: ${s.survivorsDone}/${s.survivorsTotal} | Killers: ${s.killersDone}/${s.killersTotal}`,
         `Streak: ${s.meta.streak} 🔥 | Best: ${s.meta.bestStreak}`,
         `Ø Tries: ${s.avgTries} | Remaining: ${s.remaining}`,
       ];

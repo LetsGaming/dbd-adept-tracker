@@ -47,7 +47,9 @@ export function useExport() {
     renderStatCard({
       survivors: store.survivors,
       killers: store.killers,
+      survivorsTotal: store.survivorsTotal,
       survivorsDone: store.survivorsDone,
+      killersTotal: store.killersTotal,
       killersDone: store.killersDone,
       totalDone: store.totalDone,
       totalCount: store.totalCount,
